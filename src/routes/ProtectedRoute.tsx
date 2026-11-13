@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router";
 import { useAuth } from "../context/AuthContext";
+import { getRoleHomePath } from "../utils/navigation";
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -32,7 +33,7 @@ const ProtectedRoute = ({
       <Navigate
         to="/login"
         replace
-        state={{ from: location.pathname }}
+        state={{ from: `${location.pathname}${location.search}${location.hash}` }}
       />
     );
   }
@@ -41,7 +42,7 @@ const ProtectedRoute = ({
     allowedRoles &&
     !allowedRoles.includes(user.role)
   ) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={getRoleHomePath(user.role)} replace />;
   }
 
   return children;

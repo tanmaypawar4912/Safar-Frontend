@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import { Route, Routes } from "react-router";
 
 import Home from "./pages/public/Home";
+import PublicBooking from "./pages/public/PublicBooking";
+import Business from "./pages/public/Business";
 
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
@@ -18,9 +20,13 @@ import CustomerComplaints from "./pages/customer/CustomerComplaints";
 
 import DriverDashboard from "./pages/driver/DriverDashboard";
 import DriverProfile from "./pages/driver/DriverProfile";
+import DriverOnboarding from "./pages/driver/DriverOnboarding";
+import DriverVerification from "./pages/driver/DriverVerification";
 import DriverJobs from "./pages/driver/DriverJobs";
 import DriverVehicleDetails from "./pages/driver/DriverVehicleDetails";
 import DriverDocuments from "./pages/driver/DriverDocuments";
+import DriverReviews from "./pages/driver/DriverReviews";
+import DriverCompleted from "./pages/driver/DriverCompleted";
 
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminDriverApprovals from "./pages/admin/AdminDriverApprovals";
@@ -33,9 +39,11 @@ import AdminPricing from "./pages/admin/AdminPricing";
 import AdminComplaints from "./pages/admin/AdminComplaints";
 import AdminReviews from "./pages/admin/AdminReviews";
 import AdminSettings from "./pages/admin/AdminSettings";
+import AdminEnterpriseEnquiries from "./pages/admin/AdminEnterpriseEnquiries";
 
 import ProtectedRoute from "./routes/ProtectedRoute";
 import DashboardLayout from "./components/layout/DashboardLayout";
+import ScrollToTop from "./components/routing/ScrollToTop";
 
 type WorkspaceRole = "customer" | "driver" | "admin";
 
@@ -55,9 +63,13 @@ function WorkspaceRoute({
 
 function App() {
   return (
-    <Routes>
+    <>
+      <ScrollToTop />
+      <Routes>
       {/* Public routes */}
       <Route path="/" element={<Home />} />
+      <Route path="/book" element={<PublicBooking />} />
+      <Route path="/business" element={<Business />} />
 
       {/* Authentication routes */}
       <Route path="/login" element={<Login />} />
@@ -66,37 +78,127 @@ function App() {
       <Route path="/reset-password" element={<ResetPassword />} />
 
       {/* Customer workspace */}
-      <Route path="/customer" element={<WorkspaceRoute role="customer"><CustomerDashboard /></WorkspaceRoute>} />
-      <Route path="/customer/profile" element={<WorkspaceRoute role="customer"><CustomerProfile /></WorkspaceRoute>} />
-      <Route path="/customer/book" element={<WorkspaceRoute role="customer"><BookDelivery /></WorkspaceRoute>} />
-      <Route path="/customer/orders" element={<WorkspaceRoute role="customer"><MyOrders /></WorkspaceRoute>} />
-      <Route path="/customer/orders/:id" element={<WorkspaceRoute role="customer"><BookingDetails /></WorkspaceRoute>} />
-      <Route path="/customer/reviews" element={<WorkspaceRoute role="customer"><CustomerReviews /></WorkspaceRoute>} />
-      <Route path="/customer/complaints" element={<WorkspaceRoute role="customer"><CustomerComplaints /></WorkspaceRoute>} />
+      <Route
+        path="/customer"
+        element={<WorkspaceRoute role="customer"><CustomerDashboard /></WorkspaceRoute>}
+      />
+      <Route
+        path="/customer/profile"
+        element={<WorkspaceRoute role="customer"><CustomerProfile /></WorkspaceRoute>}
+      />
+      <Route
+        path="/customer/book"
+        element={<WorkspaceRoute role="customer"><BookDelivery /></WorkspaceRoute>}
+      />
+      <Route
+        path="/customer/orders"
+        element={<WorkspaceRoute role="customer"><MyOrders /></WorkspaceRoute>}
+      />
+      <Route
+        path="/customer/orders/:id"
+        element={<WorkspaceRoute role="customer"><BookingDetails /></WorkspaceRoute>}
+      />
+      <Route
+        path="/customer/reviews"
+        element={<WorkspaceRoute role="customer"><CustomerReviews /></WorkspaceRoute>}
+      />
+      <Route
+        path="/customer/complaints"
+        element={<WorkspaceRoute role="customer"><CustomerComplaints /></WorkspaceRoute>}
+      />
 
       {/* Driver workspace */}
-      <Route path="/driver" element={<WorkspaceRoute role="driver"><DriverDashboard /></WorkspaceRoute>} />
-      <Route path="/driver/jobs" element={<WorkspaceRoute role="driver"><DriverJobs /></WorkspaceRoute>} />
-      <Route path="/driver/profile" element={<WorkspaceRoute role="driver"><DriverProfile /></WorkspaceRoute>} />
-      <Route path="/driver/vehicles" element={<WorkspaceRoute role="driver"><DriverVehicleDetails /></WorkspaceRoute>} />
-      <Route path="/driver/documents" element={<WorkspaceRoute role="driver"><DriverDocuments /></WorkspaceRoute>} />
+      <Route
+        path="/driver"
+        element={<WorkspaceRoute role="driver"><DriverDashboard /></WorkspaceRoute>}
+      />
+      <Route
+        path="/driver/jobs"
+        element={<WorkspaceRoute role="driver"><DriverJobs /></WorkspaceRoute>}
+      />
+      <Route
+        path="/driver/onboarding"
+        element={<WorkspaceRoute role="driver"><DriverOnboarding /></WorkspaceRoute>}
+      />
+      <Route
+        path="/driver/profile"
+        element={<WorkspaceRoute role="driver"><DriverProfile /></WorkspaceRoute>}
+      />
+      <Route
+        path="/driver/verification"
+        element={<WorkspaceRoute role="driver"><DriverVerification /></WorkspaceRoute>}
+      />
+      <Route
+        path="/driver/reviews"
+        element={<WorkspaceRoute role="driver"><DriverReviews /></WorkspaceRoute>}
+      />
+      <Route
+        path="/driver/completed"
+        element={<WorkspaceRoute role="driver"><DriverCompleted /></WorkspaceRoute>}
+      />
+      <Route
+        path="/driver/vehicles"
+        element={<WorkspaceRoute role="driver"><DriverVehicleDetails /></WorkspaceRoute>}
+      />
+      <Route
+        path="/driver/documents"
+        element={<WorkspaceRoute role="driver"><DriverDocuments /></WorkspaceRoute>}
+      />
 
       {/* Admin workspace */}
-      <Route path="/admin" element={<WorkspaceRoute role="admin"><AdminDashboard /></WorkspaceRoute>} />
-      <Route path="/admin/bookings" element={<WorkspaceRoute role="admin"><AdminBookings /></WorkspaceRoute>} />
-      <Route path="/admin/customers" element={<WorkspaceRoute role="admin"><AdminCustomers /></WorkspaceRoute>} />
-      <Route path="/admin/drivers" element={<WorkspaceRoute role="admin"><AdminDrivers /></WorkspaceRoute>} />
-      <Route path="/admin/driver-approvals" element={<WorkspaceRoute role="admin"><AdminDriverApprovals /></WorkspaceRoute>} />
-      <Route path="/admin/driver-activity" element={<WorkspaceRoute role="admin"><AdminDriverActivity /></WorkspaceRoute>} />
-      <Route path="/admin/vehicles" element={<WorkspaceRoute role="admin"><AdminVehicles /></WorkspaceRoute>} />
-      <Route path="/admin/pricing" element={<WorkspaceRoute role="admin"><AdminPricing /></WorkspaceRoute>} />
-      <Route path="/admin/complaints" element={<WorkspaceRoute role="admin"><AdminComplaints /></WorkspaceRoute>} />
-      <Route path="/admin/reviews" element={<WorkspaceRoute role="admin"><AdminReviews /></WorkspaceRoute>} />
-      <Route path="/admin/settings" element={<WorkspaceRoute role="admin"><AdminSettings /></WorkspaceRoute>} />
+      <Route
+        path="/admin"
+        element={<WorkspaceRoute role="admin"><AdminDashboard /></WorkspaceRoute>}
+      />
+      <Route
+        path="/admin/bookings"
+        element={<WorkspaceRoute role="admin"><AdminBookings /></WorkspaceRoute>}
+      />
+      <Route
+        path="/admin/customers"
+        element={<WorkspaceRoute role="admin"><AdminCustomers /></WorkspaceRoute>}
+      />
+      <Route
+        path="/admin/drivers"
+        element={<WorkspaceRoute role="admin"><AdminDrivers /></WorkspaceRoute>}
+      />
+      <Route
+        path="/admin/driver-approvals"
+        element={<WorkspaceRoute role="admin"><AdminDriverApprovals /></WorkspaceRoute>}
+      />
+      <Route
+        path="/admin/driver-activity"
+        element={<WorkspaceRoute role="admin"><AdminDriverActivity /></WorkspaceRoute>}
+      />
+      <Route
+        path="/admin/vehicles"
+        element={<WorkspaceRoute role="admin"><AdminVehicles /></WorkspaceRoute>}
+      />
+      <Route
+        path="/admin/pricing"
+        element={<WorkspaceRoute role="admin"><AdminPricing /></WorkspaceRoute>}
+      />
+      <Route
+        path="/admin/complaints"
+        element={<WorkspaceRoute role="admin"><AdminComplaints /></WorkspaceRoute>}
+      />
+      <Route
+        path="/admin/reviews"
+        element={<WorkspaceRoute role="admin"><AdminReviews /></WorkspaceRoute>}
+      />
+      <Route
+        path="/admin/settings"
+        element={<WorkspaceRoute role="admin"><AdminSettings /></WorkspaceRoute>}
+      />
+      <Route
+        path="/admin/enterprise-enquiries"
+        element={<WorkspaceRoute role="admin"><AdminEnterpriseEnquiries /></WorkspaceRoute>}
+      />
 
       {/* Fallback */}
       <Route path="*" element={<Home />} />
-    </Routes>
+      </Routes>
+    </>
   );
 }
 

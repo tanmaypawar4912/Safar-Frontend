@@ -45,6 +45,29 @@ const categories = [
   { value: "other", label: "Other" },
 ];
 
+async function loadAllCustomerBookings(): Promise<Booking[]> {
+  const allBookings: Booking[] = [];
+  let page = 1;
+  let totalPages = 1;
+
+  // Load all pages so older bookings can also be linked to a support request.
+  while (page <= totalPages) {
+    const response = await api.get("/bookings/my", { params: { page, limit: 50 } });
+    if (response.data?.success === false) {
+      throw new Error(response.data?.message || "Unable to load your bookings.");
+    }
+    const records = Array.isArray(response.data?.bookings) ? response.data.bookings : [];
+    allBookings.push(...records);
+    const reportedPages = Number(response.data?.pagination?.totalPages);
+    totalPages = Number.isFinite(reportedPages) && reportedPages >= 0
+      ? Math.max(page, reportedPages)
+      : records.length >= 50 ? page + 1 : page;
+    page += 1;
+  }
+
+  return allBookings;
+}
+
 const inputClass =
   "mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-orange-400 focus:ring-4 focus:ring-orange-100";
 
@@ -110,15 +133,15 @@ function CustomerComplaints() {
     setLoading(true);
     setPageError("");
     try {
-      const [bookingResponse, complaintResponse] = await Promise.all([
-        api.get("/bookings/my", { params: { page: 1, limit: 100 } }),
+      const [allBookings, complaintResponse] = await Promise.all([
+        loadAllCustomerBookings(),
         api.get("/complaints/mine"),
       ]);
-      if (!bookingResponse.data?.success || !complaintResponse.data?.success) {
-        throw new Error("Unable to load your bookings and complaints.");
+      if (complaintResponse.data?.success === false) {
+        throw new Error(complaintResponse.data?.message || "Unable to load your complaints.");
       }
-      setBookings(Array.isArray(bookingResponse.data.bookings) ? bookingResponse.data.bookings : []);
-      setComplaints(Array.isArray(complaintResponse.data.complaints) ? complaintResponse.data.complaints : []);
+      setBookings(allBookings);
+      setComplaints(Array.isArray(complaintResponse.data?.complaints) ? complaintResponse.data.complaints : []);
     } catch (error: unknown) {
       setPageError(errorMessage(error, "Unable to load your complaint information."));
     } finally {
@@ -172,12 +195,19 @@ function CustomerComplaints() {
   }
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-slate-50 text-slate-900">
-
-      <main className="mx-auto grid w-full max-w-6xl gap-6 px-4 py-7 sm:px-6 sm:py-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)] lg:gap-8">
+    <div className="min-h-full overflow-x-hidden bg-[#f4f7fb] text-slate-900">
+      <section className="mx-auto max-w-[1500px] px-4 pt-5 sm:px-6 sm:pt-7 xl:px-8">
+        <div className="relative isolate overflow-hidden rounded-[26px] bg-gradient-to-br from-[#101c30] via-[#172943] to-[#252a35] p-5 text-white shadow-[0_16px_38px_rgba(15,23,42,0.13)] sm:p-7 lg:p-8">
+          <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-20 -z-10 h-64 w-64 rounded-full border border-white/10 sm:h-80 sm:w-80" />
+          <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-[0.16em] text-orange-300 sm:text-xs"><LifeBuoy className="h-3.5 w-3.5" /> Customer workspace</span>
+          <h1 className="mt-4 text-[clamp(1.8rem,3vw,2.7rem)] font-black leading-tight tracking-tight">Complaints & support</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">Raise an issue, link the related booking and track support updates from the same page.</p>
+        </div>
+      </section>
+      <main className="mx-auto grid w-full max-w-6xl gap-6 px-4 py-5 sm:px-6 sm:py-7 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)] lg:gap-8 xl:py-8">
         <section>
           <div className="inline-flex items-center gap-2 rounded-full border border-orange-100 bg-orange-50 px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-[0.15em] text-orange-700 sm:text-xs"><LifeBuoy className="h-3.5 w-3.5" /> We're here to help</div>
-          <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">Raise a complaint</h1>
+          <h2 className="mt-4 text-[clamp(1.45rem,2vw,1.9rem)] font-black leading-tight tracking-tight text-slate-900">Raise a complaint</h2>
           <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">Tell our support team what happened. Link a booking if the issue relates to a specific delivery, and keep the reference number for follow-up.</p>
 
           <div className="mt-7 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
@@ -197,11 +227,15 @@ function CustomerComplaints() {
         </section>
 
         <aside className="min-w-0">
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7"><div className="flex items-start justify-between gap-3"><div><h2 className="text-lg font-black">Your complaints</h2><p className="mt-1 text-sm text-slate-500">Track the status of issues reported by you.</p></div><span className="rounded-xl bg-orange-50 px-3 py-2 text-sm font-black text-orange-700">{complaints.length}</span></div>
-            {loading ? <div className="mt-5 flex items-center gap-2 text-sm text-slate-500"><RefreshCw className="h-4 w-4 animate-spin" />Loading complaints…</div> : complaints.length === 0 ? <div className="mt-5 rounded-2xl bg-slate-50 px-4 py-8 text-center"><LifeBuoy className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-3 text-sm font-bold text-slate-700">No complaints yet</p><p className="mt-1 text-sm text-slate-500">Submitted complaints and their status will appear here.</p></div> : <div className="mt-5 space-y-3">{complaints.map((complaint) => <article key={complaint._id} className="rounded-2xl border border-slate-200 p-4"><div className="flex flex-wrap items-start justify-between gap-2"><div className="min-w-0"><p className="break-all text-xs font-extrabold uppercase tracking-wide text-orange-700">{complaint.complaintCode}</p><h3 className="mt-1 break-words text-sm font-black text-slate-800">{complaint.subject}</h3></div><span className={`rounded-full border px-2.5 py-1 text-[10px] font-extrabold ${statusClass(complaint.status)}`}>{formatLabel(complaint.status)}</span></div><div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500"><span>{formatLabel(complaint.category)}</span><span>•</span><span>{bookingCodeOf(complaint)}</span><span>•</span><span>{formatDate(complaint.createdAt)}</span></div><p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">{complaint.description}</p><p className={`mt-3 text-xs font-extrabold ${priorityClass(complaint.priority)}`}>Priority: {formatLabel(complaint.priority)}</p>{complaint.resolution && <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 p-3"><p className="text-xs font-extrabold text-emerald-800">Resolution</p><p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-emerald-900">{complaint.resolution}</p></div>}{complaint.adminNotes && <div className="mt-3 rounded-xl bg-slate-50 p-3"><p className="text-xs font-extrabold text-slate-600">Support update</p><p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-slate-600">{complaint.adminNotes}</p></div>}</article>)}</div>}
+          <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 p-5 sm:p-6"><div className="min-w-0"><h2 className="text-lg font-black">Your complaints</h2><p className="mt-1 text-sm leading-5 text-slate-500">Review status and updates from support.</p></div><span className="shrink-0 rounded-xl bg-orange-50 px-3 py-2 text-sm font-black text-orange-700">{complaints.length}</span></div>
+            {loading ? <div className="p-5 text-sm text-slate-500"><RefreshCw className="mr-2 inline h-4 w-4 animate-spin" />Loading complaints…</div> : complaints.length === 0 ? <div className="px-4 py-9 text-center"><LifeBuoy className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-3 text-sm font-bold text-slate-700">No complaints yet</p><p className="mt-1 text-sm text-slate-500">Submitted complaints will appear here.</p></div> : <>
+              <div className="hidden overflow-x-auto lg:block"><table className="w-full min-w-[640px] text-left text-sm"><thead className="bg-slate-50 text-[11px] font-extrabold uppercase tracking-wider text-slate-500"><tr><th scope="col" className="px-4 py-3">Reference / subject</th><th scope="col" className="px-4 py-3">Booking</th><th scope="col" className="px-4 py-3">Status</th><th scope="col" className="px-4 py-3">Priority</th><th scope="col" className="px-4 py-3">Date / details</th></tr></thead><tbody className="divide-y divide-slate-100">{complaints.map((complaint) => <tr key={complaint._id} className="align-top hover:bg-slate-50/70"><td className="max-w-[210px] px-4 py-4"><p className="break-all text-xs font-extrabold text-orange-700">{complaint.complaintCode}</p><p className="mt-1 break-words font-bold text-slate-800">{complaint.subject}</p><p className="mt-1 text-[11px] text-slate-500">{formatLabel(complaint.category)}</p></td><td className="max-w-[130px] px-4 py-4 break-words text-xs text-slate-600">{bookingCodeOf(complaint)}</td><td className="px-4 py-4"><span className={`inline-flex rounded-full border px-2.5 py-1.5 text-[10px] font-extrabold ${statusClass(complaint.status)}`}>{formatLabel(complaint.status)}</span></td><td className="px-4 py-4"><span className={`text-xs font-extrabold ${priorityClass(complaint.priority)}`}>{formatLabel(complaint.priority)}</span></td><td className="px-4 py-4"><p className="whitespace-nowrap text-xs text-slate-500">{formatDate(complaint.createdAt)}</p><details className="mt-2 max-w-[240px]"><summary className="cursor-pointer text-xs font-extrabold text-orange-700">View updates</summary><div className="mt-2 space-y-2 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-600"><p className="whitespace-pre-wrap break-words">{complaint.description}</p>{complaint.resolution && <p><strong className="text-emerald-800">Resolution:</strong> {complaint.resolution}</p>}{complaint.adminNotes && <p><strong>Support update:</strong> {complaint.adminNotes}</p>}</div></details></td></tr>)}</tbody></table></div>
+              <div className="divide-y divide-slate-100 lg:hidden">{complaints.map((complaint) => <article key={complaint._id} className="min-w-0 p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="break-all text-[11px] font-extrabold text-orange-700">{complaint.complaintCode}</p><h3 className="mt-1 break-words text-sm font-black text-slate-900">{complaint.subject}</h3><p className="mt-1 text-[11px] text-slate-500">{formatLabel(complaint.category)} · {formatDate(complaint.createdAt)}</p></div><span className={`max-w-[45%] shrink-0 break-words rounded-full border px-2 py-1 text-[10px] font-extrabold ${statusClass(complaint.status)}`}>{formatLabel(complaint.status)}</span></div><div className="mt-3 flex flex-wrap items-center justify-between gap-2"><span className="break-words text-xs text-slate-600">Booking: {bookingCodeOf(complaint)}</span><span className={`text-xs font-extrabold ${priorityClass(complaint.priority)}`}>{formatLabel(complaint.priority)} priority</span></div><details className="mt-3"><summary className="min-h-9 cursor-pointer text-xs font-extrabold text-orange-700">View complaint and support updates</summary><div className="mt-2 space-y-2 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600"><p className="whitespace-pre-wrap break-words">{complaint.description}</p>{complaint.resolution && <p className="whitespace-pre-wrap break-words"><strong className="text-emerald-800">Resolution:</strong> {complaint.resolution}</p>}{complaint.adminNotes && <p className="whitespace-pre-wrap break-words"><strong>Support update:</strong> {complaint.adminNotes}</p>}</div></details></article>)}</div>
+            </>}
           </div>
-          <div className="mt-5 flex items-start gap-3 rounded-2xl border border-orange-100 bg-orange-50/70 p-4"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-orange-600"><CheckCircle2 className="h-4 w-4" /></span><p className="text-sm leading-6 text-slate-600"><strong className="text-slate-800">You can follow progress here.</strong> Keep the complaint reference code in case you need to discuss the issue with support.</p></div>
-          <Link to="/customer/orders" className="mt-5 inline-flex items-center gap-2 text-sm font-extrabold text-orange-700 hover:text-orange-800">Return to my orders <ArrowRight className="h-4 w-4" /></Link>
+          <div className="mt-5 flex items-start gap-3 rounded-2xl border border-orange-100 bg-orange-50/70 p-4"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-orange-600"><CheckCircle2 className="h-4 w-4" /></span><p className="break-words text-sm leading-6 text-slate-600"><strong className="text-slate-800">Keep your reference code.</strong> It helps support follow up on the correct issue.</p></div>
+          <Link to="/customer/orders" className="mt-5 inline-flex min-h-10 items-center gap-2 text-sm font-extrabold text-orange-700 hover:text-orange-800">Return to my orders <ArrowRight className="h-4 w-4" /></Link>
         </aside>
       </main>
     </div>

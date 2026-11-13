@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import {
   AlertCircle,
   ArrowRight,
-  CalendarDays,
   CheckCircle2,
   Clock3,
   MapPin,
@@ -16,6 +15,7 @@ import {
   XCircle,
 } from "lucide-react";
 import api from "../../services/api";
+import DriverLiveLocationControl from "../../components/driver/DriverLiveLocationControl";
 import {
   type BookingStatus,
   type DriverJob,
@@ -121,37 +121,28 @@ export default function DriverJobs() {
   const [actionError, setActionError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
+  const currentJobs = useMemo(
+    () => jobs.filter((job) => job.status === "assigned" || activeStatuses.includes(job.status)),
+    [jobs],
+  );
+
   const counts = useMemo(
     () => ({
-      all: jobs.length,
-      action: jobs.filter((job) => job.status === "assigned").length + offers.length,
-      active: jobs.filter((job) => activeStatuses.includes(job.status)).length,
-      completed: jobs.filter((job) => job.status === "delivered").length,
+      all: currentJobs.length,
+      action: currentJobs.filter((job) => job.status === "assigned").length + offers.length,
+      active: currentJobs.filter((job) => activeStatuses.includes(job.status)).length,
     }),
-    [jobs, offers]
+    [currentJobs, offers],
   );
 
   const filteredJobs = useMemo(() => {
     const query = search.trim().toLowerCase();
-
-    return jobs.filter((job) => {
-      const matchesFilter =
-        filter === "all" ||
-        (filter === "action" && job.status === "assigned") ||
-        (filter === "active" && activeStatuses.includes(job.status)) ||
-        (filter === "completed" && job.status === "delivered");
-
-      const matchesSearch =
-        !query ||
-        (job.bookingCode || "").toLowerCase().includes(query) ||
-        (job.pickup?.address || "").toLowerCase().includes(query) ||
-        (job.drop?.address || "").toLowerCase().includes(query) ||
-        (job.package?.description || "").toLowerCase().includes(query) ||
-        customerName(job.customer).toLowerCase().includes(query);
-
+    return currentJobs.filter((job) => {
+      const matchesFilter = filter === "all" || (filter === "action" && job.status === "assigned") || (filter === "active" && activeStatuses.includes(job.status));
+      const matchesSearch = !query || [job.bookingCode, job.pickup?.address, job.drop?.address, job.package?.description, customerName(job.customer)].some((value) => String(value || "").toLowerCase().includes(query));
       return matchesFilter && matchesSearch;
     });
-  }, [jobs, filter, search]);
+  }, [currentJobs, filter, search]);
 
   const filteredOffers = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -215,6 +206,11 @@ export default function DriverJobs() {
       const response = await api.patch(`/bookings/${jobId}/status`, { status });
       if (response.data?.success === false) {
         throw new Error(response.data.message || "Could not update delivery status.");
+      }
+      if (status === "delivered") {
+        // Best effort immediate deletion after the delivery status is saved;
+        // the backend TTL is a fallback if the driver is offline.
+        await api.delete(`/bookings/${jobId}/location`).catch(() => undefined);
       }
 
       setSuccessMessage(
@@ -297,8 +293,23 @@ export default function DriverJobs() {
     );
   }
 
+  function jobDetailsAndActions(job: DriverJob) {
+    const action = nextAction[job.status];
+    const phone = customerPhone(job.customer);
+    return (
+      <div className="mt-3 space-y-4 border-t border-slate-100 pt-4">
+        <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+          <div className="rounded-xl bg-slate-50 p-3"><p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Customer</p><p className="mt-1 break-words text-sm font-bold text-slate-800">{customerName(job.customer)}</p>{phone && <a href={`tel:${phone}`} className="mt-1 inline-flex min-h-8 items-center gap-1 text-xs font-bold text-orange-700"><Phone className="h-3.5 w-3.5" />{phone}</a>}</div>
+          <div className="rounded-xl bg-slate-50 p-3"><p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Package and vehicle</p><p className="mt-1 break-words text-sm font-bold text-slate-800">{job.package?.description || "Package not specified"} · {job.package?.weightKg ?? "—"} kg</p><p className="mt-1 break-words text-xs text-slate-500">{vehicleName(job.vehicle)} · {typeof job.route?.distanceKm === "number" ? `${job.route.distanceKm.toFixed(1)} km` : "Distance pending"}</p></div>
+        </div>
+        {job.package?.specialInstructions && <p className="break-words rounded-xl border border-amber-100 bg-amber-50 p-3 text-xs leading-5 text-amber-900"><strong>Special instructions:</strong> {job.package.specialInstructions}</p>}
+        {job.status === "assigned" ? <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3"><p className="text-sm font-extrabold text-amber-950">This job needs your response</p><p className="mt-1 text-xs leading-5 text-amber-900/80">Accept to begin the delivery workflow, or decline with a short reason.</p>{responseControls(job._id)}</div> : action ? <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3"><p className="text-xs leading-5 text-blue-900/80">{action.helper}</p><button type="button" disabled={busyJobId === job._id} onClick={() => void updateStatus(job._id, action.status)} className="mt-3 inline-flex min-h-11 max-w-full items-center justify-center gap-2 rounded-xl bg-[#101c30] px-4 py-3 text-sm font-extrabold text-white hover:bg-[#1c2e49] disabled:opacity-50">{busyJobId === job._id ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}{busyJobId === job._id ? "Updating status…" : action.label}</button></div> : null}
+      </div>
+    );
+  }
+
   return (
-    <main className="min-h-screen bg-[#f7f9fc] px-4 py-5 text-slate-900 sm:px-6 sm:py-7 lg:px-8 lg:py-8">
+    <main className="min-h-screen min-w-0 overflow-x-clip bg-[#f7f9fc] px-4 py-5 text-slate-900 sm:px-6 sm:py-7 lg:px-8 lg:py-8">
       <div className="mx-auto max-w-[1500px]">
         <section className="rounded-[26px] bg-gradient-to-br from-[#101c30] via-[#101c30] to-[#28242a] p-5 text-white shadow-xl shadow-slate-900/10 sm:p-7 lg:p-8">
           <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-orange-300 sm:text-xs">
@@ -342,13 +353,12 @@ export default function DriverJobs() {
               />
             </label>
 
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               {(
                 [
-                  { id: "all", label: "All jobs", count: counts.all },
+                  { id: "all", label: "Current & upcoming", count: counts.all },
                   { id: "action", label: "Needs action", count: counts.action },
                   { id: "active", label: "In progress", count: counts.active },
-                  { id: "completed", label: "Completed", count: counts.completed },
                 ] as const
               ).map((item) => (
                 <button
@@ -398,6 +408,11 @@ export default function DriverJobs() {
           </div>
         )}
 
+        {/* Keep the GPS watcher mounted even when a driver changes job filters/search. */}
+        {jobs.filter((job) => activeStatuses.includes(job.status)).map((job) => (
+          <DriverLiveLocationControl key={job._id} bookingId={job._id} status={job.status} bookingCode={job.bookingCode} />
+        ))}
+
         {!loading && filteredOffers.length > 0 && (
           <section className="mt-6 space-y-4" aria-label="Automatic driver offers">
             <div className="flex flex-wrap items-end justify-between gap-2">
@@ -413,9 +428,9 @@ export default function DriverJobs() {
             </div>
 
             <p className="text-xs leading-5 text-slate-500">
-              Offers are shared with a small group of eligible drivers. The first
-              eligible driver to accept claims the booking; competing offers
-              disappear automatically. Offers expire, so respond promptly.
+              Only one eligible driver receives a booking offer at a time. If that
+              driver declines or the offer expires, LogiGo checks the next eligible
+              driver. Offers expire, so respond promptly.
             </p>
 
             {filteredOffers.map((job) => (
@@ -522,13 +537,13 @@ export default function DriverJobs() {
               <Truck className="h-8 w-8" />
             </span>
             <h2 className="mt-5 text-xl font-black sm:text-2xl">
-              {jobs.length === 0 && offers.length === 0
-                ? "No jobs or offers yet"
-                : "No jobs match this filter"}
+              {currentJobs.length === 0 && offers.length === 0
+                ? "No current jobs or offers"
+                : "No current jobs match this filter"}
             </h2>
             <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-500">
-              {jobs.length === 0 && offers.length === 0
-                ? "When an order matches your approved vehicle and you are online, automatic dispatch offers will appear here. This page checks for offers every 15 seconds."
+              {currentJobs.length === 0 && offers.length === 0
+                ? "New offers and active deliveries will appear here. Completed deliveries are kept separately in Completed Deliveries. This page checks for offers every 15 seconds."
                 : "Try another filter or clear the search field."}
             </p>
             {(search || filter !== "all") && (
@@ -547,139 +562,10 @@ export default function DriverJobs() {
         )}
 
         {!loading && filteredJobs.length > 0 && (
-          <section className="mt-7 space-y-4" aria-label="Assigned jobs">
-            <h2 className="text-lg font-black">Your accepted and previous jobs</h2>
-            {filteredJobs.map((job: DriverJob) => {
-              const action = nextAction[job.status];
-              const customer = customerName(job.customer);
-              const phone = customerPhone(job.customer);
-
-              return (
-                <article key={job._id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-orange-200 hover:shadow-md">
-                  <div className="h-1 bg-gradient-to-r from-orange-400 via-orange-500 to-amber-300" />
-                  <div className="p-4 sm:p-6">
-                    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-50 text-orange-600">
-                            <Package className="h-4 w-4" />
-                          </span>
-                          <h2 className="break-all text-base font-black">
-                            {job.bookingCode || `Booking ${job._id.slice(-6)}`}
-                          </h2>
-                          <span className={`rounded-full border px-3 py-1.5 text-xs font-extrabold ${statusClass(job.status)}`}>
-                            {statusLabel(job.status)}
-                          </span>
-                        </div>
-                        <p className="mt-3 flex items-center gap-2 text-xs text-slate-500">
-                          <CalendarDays className="h-3.5 w-3.5" />
-                          Assigned/updated {jobDate(job.updatedAt || job.createdAt)}
-                        </p>
-                      </div>
-                      <div className="rounded-xl bg-slate-50 px-4 py-3 sm:min-w-36 sm:text-right">
-                        <p className="text-xs font-semibold text-slate-500">Estimated / final fare</p>
-                        <p className="mt-1 text-xl font-black">
-                          {formatDriverPrice(job.fare?.finalFare ?? job.fare?.estimatedFare)}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mt-5 grid gap-3 lg:grid-cols-2">
-                      <div className="flex min-w-0 gap-3 rounded-xl border border-slate-100 bg-slate-50/80 p-4">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
-                          <MapPin className="h-4 w-4" />
-                        </span>
-                        <div className="min-w-0">
-                          <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Pickup</p>
-                          <p className="mt-1 break-words text-sm font-bold leading-5 text-slate-900">
-                            {job.pickup?.address || "Pickup address unavailable"}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex min-w-0 gap-3 rounded-xl border border-slate-100 bg-slate-50/80 p-4">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-orange-700">
-                          <MapPin className="h-4 w-4" />
-                        </span>
-                        <div className="min-w-0">
-                          <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Drop</p>
-                          <p className="mt-1 break-words text-sm font-bold leading-5 text-slate-900">
-                            {job.drop?.address || "Drop address unavailable"}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                      <div className="rounded-xl border border-slate-100 p-3.5">
-                        <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Customer</p>
-                        <p className="mt-1 break-words text-sm font-bold">{customer}</p>
-                        {phone && (
-                          <a href={`tel:${phone}`} className="mt-1 inline-flex items-center gap-1.5 text-xs font-bold text-orange-700 hover:underline">
-                            <Phone className="h-3.5 w-3.5" />{phone}
-                          </a>
-                        )}
-                      </div>
-                      <div className="rounded-xl border border-slate-100 p-3.5">
-                        <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Package</p>
-                        <p className="mt-1 break-words text-sm font-bold">{job.package?.description || "Not specified"}</p>
-                        <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-slate-500">
-                          <Weight className="h-3.5 w-3.5" />{job.package?.weightKg ?? "—"} kg
-                        </p>
-                      </div>
-                      <div className="rounded-xl border border-slate-100 p-3.5">
-                        <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Vehicle</p>
-                        <p className="mt-1 break-words text-sm font-bold">{vehicleName(job.vehicle)}</p>
-                        <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-slate-500">
-                          <Route className="h-3.5 w-3.5" />{job.route?.distanceKm ?? "—"} km
-                        </p>
-                      </div>
-                      <div className="rounded-xl border border-slate-100 p-3.5">
-                        <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Special instructions</p>
-                        <p className="mt-1 break-words text-sm leading-5 text-slate-700">
-                          {job.package?.specialInstructions || "No special instructions"}
-                        </p>
-                      </div>
-                    </div>
-
-                    {job.status === "assigned" && (
-                      <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
-                        <p className="text-sm font-extrabold text-amber-950">This job needs your response</p>
-                        <p className="mt-1 text-xs leading-5 text-amber-900/80">
-                          Accept to begin the delivery workflow, or decline with a short reason.
-                        </p>
-                        {responseControls(job._id)}
-                      </div>
-                    )}
-
-                    {action && (
-                      <div className="mt-5 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
-                        <p className="text-xs leading-5 text-blue-900/80">{action.helper}</p>
-                        <button
-                          type="button"
-                          disabled={busyJobId === job._id}
-                          onClick={() => void updateStatus(job._id, action.status)}
-                          className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#101c30] px-4 py-3 text-sm font-extrabold text-white hover:bg-[#1c2e49] disabled:opacity-50"
-                        >
-                          {busyJobId === job._id ? (
-                            <RefreshCw className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <ArrowRight className="h-4 w-4" />
-                          )}
-                          {busyJobId === job._id ? "Updating status…" : action.label}
-                        </button>
-                      </div>
-                    )}
-
-                    {job.status === "delivered" && (
-                      <div className="mt-5 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 text-sm font-bold text-emerald-800">
-                        <CheckCircle2 className="h-5 w-5" />
-                        This delivery is complete.
-                      </div>
-                    )}
-                  </div>
-                </article>
-              );
-            })}
+          <section className="mt-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-label="Current and upcoming jobs">
+            <div className="flex flex-col gap-1 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5"><div><h2 className="text-base font-black text-slate-900 sm:text-lg">Current and upcoming jobs</h2><p className="mt-1 text-xs text-slate-500">Completed deliveries are available in the separate history page.</p></div><span className="text-xs font-semibold text-slate-500">{filteredJobs.length} shown</span></div>
+            <div className="hidden overflow-x-auto lg:block"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-slate-50 text-[11px] font-extrabold uppercase tracking-wider text-slate-500"><tr><th scope="col" className="px-4 py-3">Booking</th><th scope="col" className="px-4 py-3">Route</th><th scope="col" className="px-4 py-3">Package</th><th scope="col" className="px-4 py-3">Status</th><th scope="col" className="px-4 py-3">Fare</th><th scope="col" className="px-4 py-3">Details / action</th></tr></thead><tbody className="divide-y divide-slate-100">{filteredJobs.map((job) => <tr key={job._id} className="align-top hover:bg-orange-50/30"><td className="px-4 py-4"><p className="break-all font-extrabold text-slate-900">{job.bookingCode || `Booking ${job._id.slice(-6).toUpperCase()}`}</p><p className="mt-1 whitespace-nowrap text-[11px] text-slate-500">{jobDate(job.updatedAt || job.createdAt)}</p></td><td className="max-w-[270px] px-4 py-4"><p className="break-words text-xs leading-5"><span className="font-bold text-emerald-700">From:</span> {job.pickup?.address || "Pickup unavailable"}</p><p className="mt-1 break-words text-xs leading-5"><span className="font-bold text-orange-700">To:</span> {job.drop?.address || "Drop unavailable"}</p></td><td className="max-w-[160px] px-4 py-4"><p className="break-words text-xs font-bold text-slate-800">{job.package?.description || "Package"}</p><p className="mt-1 text-[11px] text-slate-500">{job.package?.weightKg ?? "—"} kg · {vehicleName(job.vehicle)}</p></td><td className="px-4 py-4"><span className={`inline-flex rounded-full border px-2.5 py-1.5 text-[10px] font-extrabold ${statusClass(job.status)}`}>{statusLabel(job.status)}</span></td><td className="whitespace-nowrap px-4 py-4 font-black text-slate-900">{formatDriverPrice(job.fare?.finalFare ?? job.fare?.estimatedFare)}</td><td className="px-4 py-4"><details className="min-w-[150px]"><summary className="min-h-9 cursor-pointer text-xs font-extrabold text-orange-700">View / manage</summary>{jobDetailsAndActions(job)}</details></td></tr>)}</tbody></table></div>
+            <div className="divide-y divide-slate-100 lg:hidden">{filteredJobs.map((job) => <article key={job._id} className="min-w-0 p-4"><div className="flex min-w-0 items-start justify-between gap-3"><div className="min-w-0"><p className="break-all text-sm font-black text-slate-900">{job.bookingCode || `Booking ${job._id.slice(-6).toUpperCase()}`}</p><p className="mt-1 text-[11px] text-slate-500">{jobDate(job.updatedAt || job.createdAt)}</p></div><span className={`max-w-[45%] shrink-0 break-words rounded-full border px-2 py-1 text-[10px] font-extrabold ${statusClass(job.status)}`}>{statusLabel(job.status)}</span></div><div className="mt-3 space-y-2 rounded-xl bg-slate-50 p-3"><p className="break-words text-xs leading-5"><span className="font-bold text-emerald-700">Pickup:</span> {job.pickup?.address || "Pickup unavailable"}</p><p className="break-words text-xs leading-5"><span className="font-bold text-orange-700">Drop:</span> {job.drop?.address || "Drop unavailable"}</p></div><div className="mt-3 flex items-end justify-between gap-3"><div className="min-w-0"><p className="break-words text-xs font-bold text-slate-800">{job.package?.description || "Package"} · {job.package?.weightKg ?? "—"} kg</p><p className="mt-1 break-words text-[11px] text-slate-500">{vehicleName(job.vehicle)} · {typeof job.route?.distanceKm === "number" ? `${job.route.distanceKm.toFixed(1)} km` : "Distance pending"}</p></div><p className="shrink-0 text-sm font-black text-slate-900">{formatDriverPrice(job.fare?.finalFare ?? job.fare?.estimatedFare)}</p></div><details className="mt-3"><summary className="min-h-10 cursor-pointer rounded-lg bg-slate-100 px-3 py-2.5 text-xs font-extrabold text-slate-700">View details and update status</summary>{jobDetailsAndActions(job)}</details></article>)}</div>
           </section>
         )}
       </div>

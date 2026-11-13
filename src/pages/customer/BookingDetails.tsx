@@ -3,7 +3,9 @@ import { Link, useParams } from "react-router";
 import { isAxiosError } from "axios";
 import {
   ArrowLeft,
+  AlertTriangle,
   ArrowRight,
+  Ban,
   CalendarDays,
   CheckCircle2,
   Clock3,
@@ -16,10 +18,12 @@ import {
   Truck,
   UserRound,
   Weight,
+  X,
   XCircle,
 } from "lucide-react";
 
 import api from "../../services/api";
+import BookingLiveTracking from "../../components/booking/BookingLiveTracking";
 
 type BookingStatus =
   | "pending"
@@ -39,6 +43,13 @@ interface BookingParty {
   phone?: string;
 }
 
+interface BookingStatusHistoryEntry {
+  status: BookingStatus;
+  changedBy?: { _id?: string; name?: string; role?: string } | string | null;
+  note?: string;
+  createdAt?: string;
+}
+
 interface Booking {
   _id: string;
   bookingCode: string;
@@ -48,6 +59,7 @@ interface Booking {
   updatedAt?: string;
   cancelledAt?: string | null;
   cancellationReason?: string;
+  statusHistory?: BookingStatusHistoryEntry[];
   customer: BookingParty | string | null;
   driver: BookingParty | string | null;
   vehicle:
@@ -160,6 +172,11 @@ function BookingDetails() {
   const [syncError, setSyncError] = useState("");
   const [lastUpdated, setLastUpdated] = useState("");
   const [pollingPaused, setPollingPaused] = useState(false);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState("");
+  const [cancelNotice, setCancelNotice] = useState("");
   const requestInProgress = useRef(false);
   const bookingRef = useRef<Booking | null>(null);
 
@@ -211,6 +228,36 @@ function BookingDetails() {
     }
   }, [id]);
 
+  const submitCancellation = useCallback(async () => {
+    if (!id || cancelling) return;
+
+    setCancelling(true);
+    setCancelError("");
+    setCancelNotice("");
+
+    try {
+      const response = await api.patch(`/bookings/${id}/cancel`, {
+        cancellationReason: cancellationReason.trim(),
+      });
+
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || "Unable to cancel this booking.");
+      }
+
+      setShowCancelDialog(false);
+      setCancellationReason("");
+      setCancelNotice(response.data.message || "Your booking has been cancelled.");
+      await loadBooking(false);
+    } catch (requestError: unknown) {
+      setCancelError(getErrorMessage(requestError));
+      // A driver may have accepted while the dialog was open. Refresh the
+      // booking so the customer sees the authoritative current status.
+      void loadBooking(true);
+    } finally {
+      setCancelling(false);
+    }
+  }, [id, cancelling, cancellationReason, loadBooking]);
+
   useEffect(() => {
     void loadBooking(false);
   }, [loadBooking]);
@@ -230,6 +277,11 @@ function BookingDetails() {
   }, [booking?.status, pollingPaused, loadBooking]);
 
   const isCancelled = booking?.status === "cancelled";
+  const canCancelBooking = Boolean(
+    booking &&
+      ["pending", "assigned"].includes(booking.status) &&
+      ["unpaid", "failed"].includes(booking.paymentStatus)
+  );
   const currentStepIndex = booking ? deliverySteps.indexOf(booking.status) : -1;
   const progress = currentStepIndex < 0 ? 0 : (currentStepIndex / (deliverySteps.length - 1)) * 100;
   const driver = booking && typeof booking.driver === "object" ? booking.driver : null;
@@ -286,15 +338,37 @@ function BookingDetails() {
               <span className="inline-flex items-center gap-1.5 text-xs text-slate-500"><CalendarDays className="h-3.5 w-3.5" /> {formatDate(booking.createdAt)}</span>
             </div>
           </div>
-          <button type="button" onClick={() => void loadBooking(true)} disabled={refreshing} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:border-orange-200 hover:bg-orange-50 hover:text-orange-700 disabled:opacity-60">
-            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} /> Refresh status
-          </button>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {!isCancelled && booking.status !== "delivered" && !canCancelBooking && (
+              <Link to="/customer/complaints" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-bold text-orange-800 transition hover:bg-orange-100 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-100">
+                Need cancellation help? <ArrowRight className="h-4 w-4" />
+              </Link>
+            )}
+            {canCancelBooking && (
+              <button
+                type="button"
+                onClick={() => { setCancelError(""); setCancelNotice(""); setShowCancelDialog(true); }}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-3 text-sm font-bold text-rose-700 transition hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-rose-100"
+              >
+                <Ban className="h-4 w-4" /> Cancel booking
+              </button>
+            )}
+            <button type="button" onClick={() => void loadBooking(true)} disabled={refreshing} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:border-orange-200 hover:bg-orange-50 hover:text-orange-700 disabled:opacity-60">
+              <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} /> Refresh status
+            </button>
+          </div>
         </section>
 
         {syncError && (
           <div role="status" className="mt-5 flex flex-col gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 sm:flex-row sm:items-center sm:justify-between">
             <span>{syncError}</span>
             {pollingPaused && <span className="font-bold">Automatic refresh paused</span>}
+          </div>
+        )}
+
+        {cancelNotice && (
+          <div role="status" className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">
+            {cancelNotice}
           </div>
         )}
 
@@ -319,6 +393,8 @@ function BookingDetails() {
             </div>
           </div>
         </section>
+
+        <BookingLiveTracking bookingId={booking._id} status={booking.status} />
 
         {/* Route card */}
         <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
@@ -354,6 +430,51 @@ function BookingDetails() {
             </div>
           </div>
           <p className="mt-6 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-500">This progress indicator reflects the booking status. It does not represent the truck's live GPS position.</p>
+        </section>
+
+        {/* Recorded events from the backend status history (not simulated GPS). */}
+        <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-xl font-black tracking-tight">Booking updates</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-500">A timestamped record of changes saved by LogiGo.</p>
+            </div>
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500"><Clock3 className="h-4 w-4" /> Most recent updates below</span>
+          </div>
+
+          {booking.statusHistory?.length ? (
+            <ol className="mt-6 space-y-0">
+              {[...booking.statusHistory]
+                .sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime())
+                .map((event, index, events) => {
+                  const actor = typeof event.changedBy === "object" && event.changedBy
+                    ? event.changedBy.name || (event.changedBy.role ? formatStatus(event.changedBy.role) : "")
+                    : "";
+                  const cancelledEvent = event.status === "cancelled";
+                  const deliveredEvent = event.status === "delivered";
+                  return (
+                    <li key={`${event.status}-${event.createdAt || index}-${index}`} className="relative flex gap-3 pb-5 last:pb-0 sm:gap-4">
+                      {index !== events.length - 1 && <span className="absolute bottom-0 left-[15px] top-8 w-px bg-slate-200" />}
+                      <span className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${cancelledEvent ? "bg-rose-100 text-rose-700" : deliveredEvent ? "bg-emerald-100 text-emerald-700" : "bg-orange-50 text-orange-600"}`}>
+                        {cancelledEvent ? <XCircle className="h-4 w-4" /> : deliveredEvent ? <CheckCircle2 className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}
+                      </span>
+                      <div className="min-w-0 flex-1 rounded-2xl border border-slate-100 bg-slate-50/70 p-3.5 sm:p-4">
+                        <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                          <h3 className="text-sm font-extrabold text-slate-900">{formatStatus(event.status)}</h3>
+                          <time className="shrink-0 text-[11px] font-medium text-slate-500">{formatDate(event.createdAt)}</time>
+                        </div>
+                        {event.note && <p className="mt-2 break-words text-sm leading-6 text-slate-600">{event.note}</p>}
+                        {actor && <p className="mt-2 text-[11px] font-semibold text-slate-400">Recorded by {actor}</p>}
+                      </div>
+                    </li>
+                  );
+                })}
+            </ol>
+          ) : (
+            <div className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm leading-6 text-slate-500">
+              Detailed history is not available for this older booking yet. The current booking status above is the latest saved status.
+            </div>
+          )}
         </section>
 
         {/* Timeline and driver */}
@@ -454,7 +575,61 @@ function BookingDetails() {
           <Link to="/customer/orders" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-orange-500/15 transition hover:bg-orange-600"><ArrowLeft className="h-4 w-4" /> Back to My Orders</Link>
           <Link to="/customer/book" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition hover:border-orange-200 hover:bg-orange-50 hover:text-orange-700">Book another delivery <ArrowRight className="h-4 w-4" /></Link>
         </div>
-        <p className="mt-6 text-center text-[11px] leading-5 text-slate-400">Last checked: {formatDate(lastUpdated)} · Active bookings refresh automatically every 15 seconds. Live GPS tracking is not represented here.</p>
+        <p className="mt-6 text-center text-[11px] leading-5 text-slate-400">Last checked: {formatDate(lastUpdated)} · Booking status refreshes every 15 seconds; GPS location refreshes every 10 seconds while active and available.</p>
+
+        {showCancelDialog && (
+          <div
+            className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/55 p-0 backdrop-blur-sm sm:items-center sm:p-5"
+            role="presentation"
+            onMouseDown={(event) => { if (event.target === event.currentTarget && !cancelling) setShowCancelDialog(false); }}
+          >
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="cancel-booking-title"
+              className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600"><AlertTriangle className="h-5 w-5" /></span>
+                  <div>
+                    <h2 id="cancel-booking-title" className="text-xl font-black tracking-tight text-slate-900">Cancel this booking?</h2>
+                    <p className="mt-1 text-sm leading-6 text-slate-500">{booking.bookingCode}</p>
+                  </div>
+                </div>
+                <button type="button" aria-label="Close cancellation dialog" disabled={cancelling} onClick={() => setShowCancelDialog(false)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 disabled:opacity-50"><X className="h-5 w-5" /></button>
+              </div>
+
+              <div className="mt-5 flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+                <p>You can cancel before a driver accepts. If a driver has already accepted or payment is in progress, contact support so the team can help safely.</p>
+              </div>
+
+              <label htmlFor="cancellation-reason" className="mt-5 block text-sm font-bold text-slate-800">Reason <span className="font-medium text-slate-400">(optional)</span></label>
+              <textarea
+                id="cancellation-reason"
+                value={cancellationReason}
+                onChange={(event) => setCancellationReason(event.target.value.slice(0, 500))}
+                maxLength={500}
+                rows={3}
+                placeholder="Tell us why you are cancelling (optional)"
+                disabled={cancelling}
+                className="mt-2 w-full resize-y rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-orange-400 focus:ring-4 focus:ring-orange-100 disabled:bg-slate-50"
+              />
+              <p className="mt-1 text-right text-[11px] text-slate-400">{cancellationReason.length}/500 characters</p>
+
+              {cancelError && <p role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm leading-5 text-rose-800">{cancelError}</p>}
+
+              <div className="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button type="button" disabled={cancelling} onClick={() => setShowCancelDialog(false)} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">Keep booking</button>
+                <button type="button" disabled={cancelling} onClick={() => void submitCancellation()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3 text-sm font-extrabold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60">
+                  {cancelling ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
+                  {cancelling ? "Cancelling…" : "Confirm cancellation"}
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
       </main>
     </div>
   );

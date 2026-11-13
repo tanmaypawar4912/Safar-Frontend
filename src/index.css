@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* ==========================================================
+   LOGIGO — GLOBAL DESIGN FOUNDATION
+   Consistent typography, sizing, responsive behavior and focus.
+   ========================================================== */
+
 :root {
   font-family:
     Inter,
@@ -12,24 +17,107 @@
 
   color: #f8fafc;
   background: #07111f;
+
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --lg-navy: #07111f;
+  --lg-navy-light: #111f32;
+  --lg-orange: #ff6817;
+  --lg-orange-hover: #ea580c;
+
+  --lg-text: #142137;
+  --lg-muted: #64748b;
+  --lg-border: #dbe4ef;
+  --lg-surface: #ffffff;
+  --lg-page-bg: #f3f6fb;
+
+  --lg-content-max: 1440px;
+  --lg-page-padding: clamp(16px, 2.5vw, 36px);
+
+  --lg-radius-sm: 8px;
+  --lg-radius-md: 12px;
+  --lg-radius-lg: 18px;
+
+  --lg-shadow-card:
+    0 2px 5px rgb(15 23 42 / 3%),
+    0 10px 30px rgb(15 23 42 / 4%);
 }
 
-* {
+/* Predictable sizing across the application. */
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
 html {
+  width: 100%;
+  max-width: 100%;
+  min-width: 320px;
+
   scroll-behavior: smooth;
+  scroll-padding-top: 5rem;
+
+  overflow-x: clip;
+
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
-  margin: 0;
+  width: 100%;
+  max-width: 100%;
   min-width: 320px;
+
   min-height: 100vh;
+  min-height: 100dvh;
+
+  margin: 0;
+
   background: #07111f;
+  color: #f8fafc;
+
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1.5;
+
+  overflow-x: clip;
 }
+
+/* React application root. */
+
+#root {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* Images and embedded media must not widen their containers. */
+
+img,
+video,
+canvas,
+iframe {
+  max-width: 100%;
+}
+
+img {
+  height: auto;
+}
+
+svg {
+  max-width: 100%;
+  flex-shrink: 0;
+}
+
+/* Form controls should inherit the application's font. */
 
 button,
 input,
@@ -38,13 +126,133 @@ select {
   font: inherit;
 }
 
+input,
+textarea,
+select {
+  max-width: 100%;
+  min-width: 0;
+}
+
 button {
+  max-width: 100%;
   cursor: pointer;
+  touch-action: manipulation;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+fieldset {
+  min-width: 0;
+}
+
+textarea {
+  resize: vertical;
+}
+
+/* Avoid forced word breaks on ordinary buttons and links. */
+
+body {
+  overflow-wrap: break-word;
+}
+
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+label,
+th,
+td {
+  overflow-wrap: break-word;
+}
+
+/* Add this class only where unbroken IDs or long strings require it. */
+
+.lg-break-anywhere {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+/* Consistent keyboard accessibility. */
+
+:focus-visible {
+  outline: 2px solid #ff8a4c;
+  outline-offset: 3px;
 }
 
 ::selection {
-  background: rgba(249, 115, 22, 0.25);
+  color: #ffffff;
+  background: rgb(249 115 22 / 35%);
 }
+
+/* ==========================================================
+   REUSABLE RESPONSIVE LAYOUT HELPERS
+   Optional classes for pages as they are updated.
+   ========================================================== */
+
+.lg-page-container {
+  width: 100%;
+  max-width: var(--lg-content-max);
+  min-width: 0;
+
+  margin-inline: auto;
+  padding-inline: var(--lg-page-padding);
+}
+
+.lg-min-w-0 {
+  min-width: 0;
+}
+
+.lg-responsive-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: clamp(12px, 1.5vw, 24px);
+
+  min-width: 0;
+}
+
+.lg-responsive-card {
+  min-width: 0;
+  max-width: 100%;
+  border-radius: var(--lg-radius-md);
+}
+
+.lg-responsive-heading {
+  font-size: clamp(1.5rem, 1.15rem + 1.2vw, 2.5rem);
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+
+  overflow-wrap: break-word;
+  text-wrap: balance;
+}
+
+.lg-responsive-copy {
+  font-size: clamp(0.875rem, 0.82rem + 0.15vw, 1rem);
+  line-height: 1.65;
+  overflow-wrap: break-word;
+}
+
+.lg-table-scroll {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.lg-table-scroll table {
+  max-width: 100%;
+}
+
+/* ==========================================================
+   EXISTING LOGISTICS ROAD ANIMATIONS
+   ========================================================== */
 
 .logistics-road {
   background:
@@ -52,8 +260,8 @@ button {
       to bottom,
       transparent 0%,
       transparent 47%,
-      rgba(255, 255, 255, 0.08) 48%,
-      rgba(255, 255, 255, 0.08) 52%,
+      rgb(255 255 255 / 8%) 48%,
+      rgb(255 255 255 / 8%) 52%,
       transparent 53%
     ),
     #111827;
@@ -64,8 +272,8 @@ button {
     to right,
     transparent 0,
     transparent 32px,
-    rgba(255, 255, 255, 0.65) 32px,
-    rgba(255, 255, 255, 0.65) 72px,
+    rgb(255 255 255 / 65%) 32px,
+    rgb(255 255 255 / 65%) 72px,
     transparent 72px
   );
 
@@ -86,11 +294,11 @@ button {
 @keyframes pulseGlow {
   0%,
   100% {
-    box-shadow: 0 0 0 rgba(249, 115, 22, 0);
+    box-shadow: 0 0 0 rgb(249 115 22 / 0%);
   }
 
   50% {
-    box-shadow: 0 0 35px rgba(249, 115, 22, 0.25);
+    box-shadow: 0 0 35px rgb(249 115 22 / 25%);
   }
 }
 
@@ -98,13 +306,110 @@ button {
   animation: pulseGlow 2s ease-in-out infinite;
 }
 
+/* ==========================================================
+   TABLET
+   ========================================================== */
+
+@media (max-width: 1024px) {
+  .lg-responsive-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 16px;
+  }
+}
+
+/* ==========================================================
+   MOBILE
+   ========================================================== */
+
+@media (max-width: 640px) {
+  html {
+    scroll-padding-top: 4rem;
+  }
+
+  .lg-page-container {
+    padding-inline: 16px;
+  }
+
+  .lg-responsive-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .lg-responsive-heading {
+    font-size: clamp(1.45rem, 5.5vw, 2rem);
+    line-height: 1.2;
+  }
+
+  /*
+   * Prevents iOS Safari from zooming when a form field receives focus.
+   * Existing larger font-size utilities remain useful for accessibility.
+   */
+
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  button {
+    touch-action: manipulation;
+  }
+}
+
+/* Respect reduced-motion preferences. */
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
   }
 
-  .road-lines,
-  .truck-glow {
-    animation: none;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* LogiGo cinematic homepage background */
+
+.logigo-home-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background-color: #07111f;
+
+  background-image:
+    linear-gradient(
+      90deg,
+      rgba(3, 11, 23, 0.94) 0%,
+      rgba(3, 11, 23, 0.78) 34%,
+      rgba(3, 11, 23, 0.30) 62%,
+      rgba(3, 11, 23, 0.08) 100%
+    ),
+    url("/images/logigo-home-hero.png");
+
+  background-size: cover;
+  background-position: center 55%;
+  background-repeat: no-repeat;
+}
+
+/* Responsive background for mobile */
+
+@media (max-width: 640px) {
+  .logigo-home-hero {
+    background-image:
+      linear-gradient(
+        90deg,
+        rgba(3, 11, 23, 0.88) 0%,
+        rgba(3, 11, 23, 0.62) 60%,
+        rgba(3, 11, 23, 0.35) 100%
+      ),
+      url("/images/logigo-home-hero.png");
+
+    background-position: 62% center;
+    background-size: cover;
   }
 }

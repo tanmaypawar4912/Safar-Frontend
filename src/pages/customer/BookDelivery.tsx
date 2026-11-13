@@ -1,23 +1,26 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { isAxiosError } from "axios";
-import { motion, useReducedMotion } from "motion/react";
 import {
+  ArrowLeft,
   ArrowRight,
+  Banknote,
   Check,
   CheckCircle2,
   Clock3,
+  CreditCard,
   MapPin,
   Package,
   RefreshCw,
-  Route,
   ShieldCheck,
   Truck,
   Weight,
-  Wallet,
 } from "lucide-react";
 
 import api from "../../services/api";
+import CityPicker from "../../components/booking/CityPicker";
+import LocationAutocomplete from "../../components/booking/LocationAutocomplete";
+import { getSelectedCity, type CityOption } from "../../data/cities";
 
 interface VehiclePricing {
   baseFare: number;
@@ -83,6 +86,11 @@ interface BookingCreateResponse {
   };
 }
 
+interface PaymentSettings {
+  codMaxDistanceKm?: number;
+  onlinePaymentsEnabled?: boolean;
+}
+
 const formatPrice = (amount: number) =>
   new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -103,85 +111,128 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-const fieldClass =
-  "mt-2.5 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm text-slate-800 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-orange-400 focus:ring-4 focus:ring-orange-100";
-
-const cardClass =
-  "rounded-3xl border border-slate-200/90 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.035)]";
-
-function SectionHeading({
-  icon,
-  title,
-  description,
-}: {
-  icon: ReactNode;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="flex items-start gap-3.5">
-      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-50 text-orange-600 ring-1 ring-orange-100">
-        {icon}
-      </div>
-      <div className="min-w-0 pt-0.5">
-        <h2 className="text-[clamp(1.05rem,2vw,1.3rem)] font-extrabold tracking-tight text-slate-900">
-          {title}
-        </h2>
-        <p className="mt-1 text-sm leading-6 text-slate-500">{description}</p>
-      </div>
-    </div>
-  );
-}
+const fieldClass = "lgb-input";
 
 function BookDelivery() {
   const navigate = useNavigate();
-  const prefersReducedMotion = useReducedMotion();
 
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [selectedVehicle, setSelectedVehicle] = useState<string | null>(null);
+  const [city, setCity] = useState<CityOption>(() => getSelectedCity());
+
   const [pickup, setPickup] = useState("");
   const [drop, setDrop] = useState("");
+  const [pickupLocationToken, setPickupLocationToken] = useState("");
+  const [dropLocationToken, setDropLocationToken] = useState("");
+
   const [packageDescription, setPackageDescription] = useState("");
   const [weightKg, setWeightKg] = useState("10");
   const [instructions, setInstructions] = useState("");
+
+  // Payment preferences
+  const [paymentMethod, setPaymentMethod] = useState<
+    "cash_on_delivery" | "online"
+  >("cash_on_delivery");
+
+  // Null means settings could not be loaded. The backend remains authoritative.
+  const [codMaxDistanceKm, setCodMaxDistanceKm] = useState<number | null>(null);
+  const [onlinePaymentsEnabled, setOnlinePaymentsEnabled] = useState(false);
+  const [paymentSettingsLoading, setPaymentSettingsLoading] = useState(true);
+  const [paymentSettingsError, setPaymentSettingsError] = useState("");
 
   const [loadingVehicles, setLoadingVehicles] = useState(true);
   const [vehicleError, setVehicleError] = useState("");
   const [estimateError, setEstimateError] = useState("");
   const [bookingError, setBookingError] = useState("");
+
   const [isEstimating, setIsEstimating] = useState(false);
   const [isCreatingBooking, setIsCreatingBooking] = useState(false);
-  const [estimate, setEstimate] = useState<FareEstimate | null>(null);
 
+  const [estimate, setEstimate] = useState<FareEstimate | null>(null);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+
+  // Load the live vehicle catalogue independently of payment settings.
   const loadVehicles = useCallback(async () => {
     setLoadingVehicles(true);
     setVehicleError("");
 
     try {
       const response = await api.get("/vehicles");
+
       if (!response.data.success) {
-        throw new Error(response.data.message || "Unable to load vehicles.");
+        throw new Error(
+          response.data.message || "Unable to load vehicles."
+        );
       }
 
       setVehicles(response.data.vehicles ?? []);
     } catch (error: unknown) {
-      setVehicleError(getErrorMessage(error, "Unable to load vehicles."));
+      setVehicleError(
+        getErrorMessage(error, "Unable to load vehicles.")
+      );
     } finally {
       setLoadingVehicles(false);
     }
   }, []);
 
+  // Load the COD policy and online-payment availability from the backend.
+  const loadPaymentSettings = useCallback(async () => {
+    setPaymentSettingsLoading(true);
+    setPaymentSettingsError("");
+
+    try {
+      const response = await api.get("/payments/settings");
+      const settings = response.data?.settings as
+        | PaymentSettings
+        | undefined;
+
+      if (!response.data?.success || !settings) {
+        throw new Error("Payment settings are unavailable.");
+      }
+
+      const configuredCodDistance = Number(settings.codMaxDistanceKm);
+
+      setCodMaxDistanceKm(
+        Number.isFinite(configuredCodDistance) &&
+          configuredCodDistance >= 0
+          ? configuredCodDistance
+          : null
+      );
+
+      // Online payment remains disabled unless the backend confirms that
+      // the gateway is configured.
+      setOnlinePaymentsEnabled(
+        settings.onlinePaymentsEnabled === true
+      );
+    } catch {
+      // A settings error must not prevent the vehicle catalogue from loading.
+      // COD eligibility will still be checked by the backend during booking.
+      setCodMaxDistanceKm(null);
+      setOnlinePaymentsEnabled(false);
+
+      setPaymentSettingsError(
+        "Payment settings could not be loaded. Online payment is unavailable; COD eligibility will be checked by the server."
+      );
+    } finally {
+      setPaymentSettingsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadVehicles();
-  }, [loadVehicles]);
+    void loadPaymentSettings();
+  }, [loadVehicles, loadPaymentSettings]);
 
   const chosenVehicle = vehicles.find(
     (vehicle) => vehicle._id === selectedVehicle
   );
 
   const weight = Number(weightKg);
+
   const validWeight =
-    Number.isFinite(weight) && weight > 0 && weight <= 5000;
+    Number.isFinite(weight) &&
+    weight > 0 &&
+    weight <= 5000;
 
   const canEstimate =
     pickup.trim().length >= 3 &&
@@ -200,8 +251,56 @@ function BookDelivery() {
     setBookingError("");
   };
 
+  const codDistanceExceeded = Boolean(
+    estimate &&
+      codMaxDistanceKm !== null &&
+      estimate.route.distanceKm > codMaxDistanceKm
+  );
+
+  const paymentMethodAvailable =
+    paymentMethod === "cash_on_delivery"
+      ? !codDistanceExceeded
+      : onlinePaymentsEnabled && !paymentSettingsLoading;
+
+  const canConfirmBooking = Boolean(
+    estimate &&
+      selectedVehicle &&
+      !isCreatingBooking &&
+      paymentMethodAvailable
+  );
+
+  const stepValid = {
+    1: pickup.trim().length >= 3 && drop.trim().length >= 3,
+    2: packageDescription.trim().length >= 2 && validWeight,
+    3:
+      Boolean(chosenVehicle?.pricing) &&
+      Boolean(chosenVehicle) &&
+      weight <= (chosenVehicle?.capacityKg ?? 0),
+    4: Boolean(estimate),
+  } as const;
+
+  const steps = [
+    { id: 1, label: "Location", sub: "Pickup & Drop" },
+    { id: 2, label: "Package Details", sub: "" },
+    { id: 3, label: "Vehicle Selection", sub: "" },
+    { id: 4, label: "Review & Book", sub: "" },
+  ] as const;
+
+  // A step can be opened only after all preceding steps are valid.
+  const canOpenStep = (target: number) => {
+    for (let id = 1; id < target; id += 1) {
+      if (!stepValid[id as 1 | 2 | 3]) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
   async function handleEstimate() {
-    if (!canEstimate || !selectedVehicle) return;
+    if (!canEstimate || !selectedVehicle) {
+      return;
+    }
 
     setIsEstimating(true);
     setEstimate(null);
@@ -212,39 +311,82 @@ function BookDelivery() {
       const response = await api.post("/pricing/estimate", {
         pickupAddress: pickup.trim(),
         dropAddress: drop.trim(),
+        pickupLocationToken: pickupLocationToken || undefined,
+        dropLocationToken: dropLocationToken || undefined,
         vehicleId: selectedVehicle,
         weightKg: weight,
       });
 
       if (!response.data.success) {
-        throw new Error(response.data.message || "Fare estimation failed.");
+        throw new Error(
+          response.data.message || "Fare estimation failed."
+        );
       }
 
       setEstimate(response.data as FareEstimate);
     } catch (error: unknown) {
-      setEstimateError(getErrorMessage(error, "Unable to estimate the fare."));
+      setEstimateError(
+        getErrorMessage(error, "Unable to estimate the fare.")
+      );
     } finally {
       setIsEstimating(false);
     }
   }
 
+  useEffect(() => {
+    if (step === 4 && canEstimate && !estimate && !estimateError) {
+      void handleEstimate();
+    }
+
+    // The step transition intentionally triggers the existing estimate flow.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
   async function handleConfirmBooking() {
-    if (!estimate || !selectedVehicle || isCreatingBooking) return;
+    if (!estimate || !selectedVehicle || isCreatingBooking) {
+      return;
+    }
+
+    // UX validation only. The backend must repeat this check using its
+    // independently calculated route distance.
+    if (
+      paymentMethod === "cash_on_delivery" &&
+      codMaxDistanceKm !== null &&
+      estimate.route.distanceKm > codMaxDistanceKm
+    ) {
+      setBookingError(
+        `Cash on delivery is available only up to ${codMaxDistanceKm} km. Choose online payment if enabled, or use a shorter route.`
+      );
+      return;
+    }
+
+    if (paymentMethod === "online" && !onlinePaymentsEnabled) {
+      setBookingError(
+        "Online payment is not configured yet. Choose cash on delivery for an eligible route."
+      );
+      return;
+    }
 
     setIsCreatingBooking(true);
     setBookingError("");
 
     try {
-      // Send user-entered booking details only. The backend recalculates
-      // and validates the vehicle, route and fare before saving the booking.
-      const response = await api.post<BookingCreateResponse>("/bookings", {
-        pickupAddress: pickup.trim(),
-        dropAddress: drop.trim(),
-        vehicleId: selectedVehicle,
-        weightKg: weight,
-        packageDescription: packageDescription.trim(),
-        specialInstructions: instructions.trim(),
-      });
+      // Never send a client-calculated fare. The backend recalculates
+      // the route, checks COD eligibility and validates the vehicle.
+      const response = await api.post<BookingCreateResponse>(
+        "/bookings",
+        {
+          pickupAddress: pickup.trim(),
+          dropAddress: drop.trim(),
+          pickupLocationToken: pickupLocationToken || undefined,
+          dropLocationToken: dropLocationToken || undefined,
+          vehicleId: selectedVehicle,
+          weightKg: weight,
+          packageDescription: packageDescription.trim(),
+          specialInstructions: instructions.trim(),
+          paymentMethod,
+        }
+      );
 
       if (!response.data.success || !response.data.booking?._id) {
         throw new Error(
@@ -253,170 +395,264 @@ function BookDelivery() {
       }
 
       navigate(`/customer/orders/${response.data.booking._id}`, {
-        state: { bookingCode: response.data.booking.bookingCode },
+        state: {
+          bookingCode: response.data.booking.bookingCode,
+        },
       });
     } catch (error: unknown) {
       setBookingError(
-        getErrorMessage(error, "Unable to create the booking. Please try again.")
+        getErrorMessage(
+          error,
+          "Unable to create the booking. Please try again."
+        )
       );
     } finally {
       setIsCreatingBooking(false);
     }
   }
 
+  const fare = estimate?.fare.estimatedFare;
+
   return (
-    <div className="w-full min-w-0 bg-[#F8FAFC] text-slate-900">
-
-      <main className="mx-auto w-full max-w-7xl px-4 py-7 sm:px-6 sm:py-10 lg:px-8 lg:py-12">
-        <motion.div
-          initial={prefersReducedMotion ? false : { opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="relative overflow-hidden rounded-[28px] border border-orange-100 bg-gradient-to-r from-white via-white to-orange-50/80 p-5 shadow-[0_10px_35px_rgba(15,23,42,0.035)] sm:p-8 lg:p-10"
-        >
-          <div className="pointer-events-none absolute -right-16 -top-28 h-64 w-64 rounded-full border border-orange-100/80" />
-          <div className="pointer-events-none absolute -right-2 -top-14 h-44 w-44 rounded-full bg-orange-100/40 blur-3xl" />
-
-          <div className="relative z-10 max-w-3xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-orange-100 bg-white px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-[0.16em] text-orange-700 shadow-sm sm:text-xs">
-              <span className="h-2 w-2 rounded-full bg-orange-500" />
-              On-demand transportation
-            </div>
-
-            <h1 className="mt-5 text-[clamp(2rem,5.5vw,3.65rem)] font-black leading-[1.04] tracking-[-0.045em] text-slate-950">
-              Book your delivery
-              <span className="mt-1 block text-orange-500">without the guesswork.</span>
-            </h1>
-
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base">
-              Enter your route, choose the vehicle that fits your cargo and review
-              your server-calculated fare before confirming your booking.
-            </p>
-
-            <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-semibold text-slate-500 sm:text-sm">
-              <span className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-emerald-500" /> Server-verified fare</span>
-              <span className="inline-flex items-center gap-2"><Route className="h-4 w-4 text-orange-500" /> Route-based estimate</span>
-              <span className="inline-flex items-center gap-2"><Wallet className="h-4 w-4 text-blue-500" /> No payment at this step</span>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Responsive step indicator */}
-        <div className="mx-auto mt-7 grid max-w-4xl grid-cols-3 gap-2 sm:mt-9 sm:gap-4">
-          {[
-            { number: "01", label: "Delivery details", complete: true },
-            { number: "02", label: "Fare estimate", complete: Boolean(estimate) },
-            { number: "03", label: "Confirmation", complete: false },
-          ].map((step, index) => (
-            <div key={step.number} className="relative min-w-0">
-              {index > 0 && (
-                <div className={`absolute -left-2.5 top-5 hidden h-px w-5 sm:block ${step.complete ? "bg-orange-300" : "bg-slate-200"}`} />
-              )}
-              <div className="flex items-center gap-2 sm:gap-3">
-                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-extrabold sm:h-10 sm:w-10 ${step.complete ? "bg-orange-500 text-white shadow-md shadow-orange-500/20" : "border border-slate-200 bg-white text-slate-500"}`}>
-                  {step.complete && index === 1 ? <Check className="h-4 w-4" /> : step.number}
-                </span>
-                <span className={`min-w-0 text-[10px] font-bold leading-4 sm:text-sm ${step.complete ? "text-slate-900" : "text-slate-400"}`}>
-                  {step.label}
-                </span>
-              </div>
-              <div className={`mt-3 h-1 rounded-full sm:mt-4 ${step.complete ? "bg-orange-500" : "bg-slate-200"}`} />
-            </div>
-          ))}
+    <main className="lgb">
+      <header className="lgp-head">
+        <div>
+          <h1>Book a Delivery</h1>
+          <p>
+            Enter your route, choose a vehicle and review your fare before
+            confirming.
+          </p>
         </div>
+      </header>
 
-        <div className="mt-7 grid items-start gap-6 lg:mt-9 lg:grid-cols-[minmax(0,1fr)_350px] xl:grid-cols-[minmax(0,1fr)_370px] xl:gap-8">
-          <div className="min-w-0 space-y-5 sm:space-y-6">
-            {/* Pickup and drop */}
-            <section className={`${cardClass} p-5 sm:p-7 lg:p-8`}>
-              <SectionHeading
-                icon={<MapPin className="h-5 w-5" />}
-                title="Where are we moving?"
-                description="Add complete pickup and destination addresses, including city."
-              />
+      {/* Booking steps */}
+      <ol className="lgb-steps" aria-label="Booking steps">
+        {steps.map((item) => {
+          const done =
+            item.id < step &&
+            stepValid[item.id as 1 | 2 | 3];
 
-              <div className="mt-7 grid gap-5 sm:grid-cols-2 sm:gap-4">
-                <div className="min-w-0">
-                  <label htmlFor="pickup" className="text-sm font-bold text-slate-700">
-                    Pickup location <span className="text-orange-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <MapPin className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-emerald-500" />
-                    <input
-                      id="pickup"
-                      value={pickup}
-                      onChange={(event) => { setPickup(event.target.value); invalidateEstimate(); }}
-                      placeholder="e.g. Shaniwar Wada, Pune"
-                      className={`${fieldClass} pl-10`}
-                      autoComplete="street-address"
-                      maxLength={256}
-                      required
-                    />
-                  </div>
+          const current = item.id === step;
+          const reachable = canOpenStep(item.id);
+
+          return (
+            <li
+              key={item.id}
+              className={`${current ? "is-current" : ""}${
+                done ? " is-done" : ""
+              }`}
+            >
+              <button
+                type="button"
+                disabled={!reachable}
+                onClick={() => {
+                  if (reachable) {
+                    setStep(item.id);
+                  }
+                }}
+                aria-current={current ? "step" : undefined}
+              >
+                <span className="lgb-step-dot">
+                  {done ? (
+                    <Check aria-hidden="true" />
+                  ) : (
+                    item.id
+                  )}
+                </span>
+
+                <span className="lgb-step-text">
+                  <strong>{item.label}</strong>
+                  {item.sub && <small>{item.sub}</small>}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+
+      <div className="lgb-layout">
+        <section className="lgp-card lgb-main">
+          {/* STEP 1 — Pickup and drop */}
+          {step === 1 && (
+            <>
+              <h2 className="lgb-title">
+                Pickup &amp; Drop Location
+              </h2>
+
+              <div className="lgb-city">
+                <div>
+                  <small>Booking city</small>
+                  <span>
+                    Suggestions are prioritised around your selected city.
+                  </span>
                 </div>
 
-                <div className="min-w-0">
-                  <label htmlFor="drop" className="text-sm font-bold text-slate-700">
-                    Drop location <span className="text-orange-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <MapPin className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-orange-500" />
-                    <input
-                      id="drop"
-                      value={drop}
-                      onChange={(event) => { setDrop(event.target.value); invalidateEstimate(); }}
-                      placeholder="e.g. Pune Railway Station, Pune"
-                      className={`${fieldClass} pl-10`}
-                      autoComplete="street-address"
-                      maxLength={256}
-                      required
-                    />
+                <CityPicker
+                  city={city}
+                  onChange={setCity}
+                  compact
+                />
+              </div>
+
+              <div className="lgb-fields">
+                <LocationAutocomplete
+                  label="Pickup Location"
+                  value={pickup}
+                  onChange={(value) => {
+                    setPickup(value);
+                    setPickupLocationToken("");
+                    invalidateEstimate();
+                  }}
+                  onLocationSelected={(address, token) => {
+                    setPickup(address);
+                    setPickupLocationToken(token);
+                    invalidateEstimate();
+                  }}
+                  placeholder="Enter pickup location"
+                  city={city}
+                  inputClassName={fieldClass}
+                  maxLength={256}
+                />
+
+                <LocationAutocomplete
+                  label="Drop Location"
+                  value={drop}
+                  onChange={(value) => {
+                    setDrop(value);
+                    setDropLocationToken("");
+                    invalidateEstimate();
+                  }}
+                  onLocationSelected={(address, token) => {
+                    setDrop(address);
+                    setDropLocationToken(token);
+                    invalidateEstimate();
+                  }}
+                  placeholder="Enter drop location"
+                  city={city}
+                  inputClassName={fieldClass}
+                  maxLength={256}
+                />
+              </div>
+
+              <div
+                className="lgb-map"
+                role="img"
+                aria-label="Route preview between pickup and drop"
+              >
+                <svg
+                  viewBox="0 0 600 260"
+                  preserveAspectRatio="xMidYMid slice"
+                  aria-hidden="true"
+                >
+                  <rect
+                    width="600"
+                    height="260"
+                    fill="#e9eef3"
+                  />
+
+                  <path
+                    className="lgb-map-water"
+                    d="M-10 200 C 90 170, 150 230, 260 210 S 430 160, 610 220 L610 270 L-10 270 Z"
+                  />
+
+                  <path
+                    className="lgb-map-road"
+                    d="M-10 90 L140 70 L260 120 L420 80 L610 130"
+                  />
+
+                  <path
+                    className="lgb-map-road"
+                    d="M80 -10 L120 120 L100 270"
+                  />
+
+                  <path
+                    className="lgb-map-road"
+                    d="M330 -10 L300 110 L360 270"
+                  />
+
+                  <path
+                    className="lgb-map-road"
+                    d="M480 -10 L450 90 L520 270"
+                  />
+
+                  <path
+                    className="lgb-map-route"
+                    d="M120 78 C 190 90, 210 150, 290 130 S 410 70, 480 110"
+                  />
+
+                  <g className="lgb-map-pin lgb-map-pin-a">
+                    <circle cx="120" cy="78" r="9" />
+                    <circle cx="120" cy="78" r="3.5" />
+                  </g>
+
+                  <g className="lgb-map-pin lgb-map-pin-b">
+                    <circle cx="480" cy="110" r="9" />
+                    <circle cx="480" cy="110" r="3.5" />
+                  </g>
+                </svg>
+
+                <span className="lgb-map-label lgb-map-label-a">
+                  {pickup.trim()
+                    ? pickup.split(",")[0]
+                    : "Pickup"}
+                </span>
+
+                <span className="lgb-map-label lgb-map-label-b">
+                  {drop.trim()
+                    ? drop.split(",")[0]
+                    : "Drop"}
+                </span>
+
+                <div className="lgb-map-stats">
+                  <div>
+                    <small>Distance</small>
+                    <strong>
+                      {estimate
+                        ? `${estimate.route.distanceKm} km`
+                        : "—"}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <small>Est. Time</small>
+                    <strong>
+                      {estimate
+                        ? `${estimate.route.durationMinutes} min`
+                        : "—"}
+                    </strong>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-6 overflow-hidden rounded-2xl border border-orange-100 bg-gradient-to-r from-orange-50/70 via-white to-white">
-                <div className="relative flex h-[90px] items-center overflow-hidden sm:h-[108px]">
-                  <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 border-t-2 border-dashed border-orange-200" />
-                  <div className="absolute left-5 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border-4 border-white bg-emerald-500 text-white shadow-sm sm:left-8">
-                    <MapPin className="h-3.5 w-3.5" />
-                  </div>
-                  <motion.div
-                    animate={prefersReducedMotion ? undefined : { x: [0, 12, 0], y: [0, -3, 0] }}
-                    transition={{ duration: 3.8, repeat: Infinity, ease: "easeInOut" }}
-                    className="absolute left-[38%] z-10 flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-500 text-white shadow-lg shadow-orange-500/25 sm:left-[43%] sm:h-14 sm:w-14"
-                  >
-                    <Truck className="h-6 w-6 sm:h-7 sm:w-7" />
-                  </motion.div>
-                  <div className="absolute right-5 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border-4 border-white bg-orange-500 text-white shadow-sm sm:right-8">
-                    <MapPin className="h-3.5 w-3.5" />
-                  </div>
-                  <span className="absolute bottom-3 left-5 text-[10px] font-bold uppercase tracking-wider text-slate-500 sm:left-8 sm:text-xs">Pickup</span>
-                  <span className="absolute bottom-3 right-5 text-[10px] font-bold uppercase tracking-wider text-slate-500 sm:right-8 sm:text-xs">Destination</span>
-                </div>
-                <p className="border-t border-orange-100/80 px-4 py-3 text-xs leading-5 text-slate-500 sm:px-5">
-                  Route distance and estimated travel time are calculated when you request a fare estimate.
-                </p>
-              </div>
-            </section>
+              <p className="lgb-hint">
+                Route distance and travel time are calculated when you
+                review your fare.
+              </p>
+            </>
+          )}
 
-            {/* Package details */}
-            <section className={`${cardClass} p-5 sm:p-7 lg:p-8`}>
-              <SectionHeading
-                icon={<Package className="h-5 w-5" />}
-                title="Package details"
-                description="Tell us what the driver will be transporting."
-              />
+          {/* STEP 2 — Package details */}
+          {step === 2 && (
+            <>
+              <h2 className="lgb-title">Package Details</h2>
 
-              <div className="mt-7 grid gap-5 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <label htmlFor="packageDescription" className="text-sm font-bold text-slate-700">
-                    Item description <span className="text-orange-500">*</span>
+              <p className="lgb-lead">
+                Tell us what the driver will be transporting.
+              </p>
+
+              <div className="lgb-fields lgb-fields-one">
+                <div className="lgb-field">
+                  <label htmlFor="packageDescription">
+                    Item description <span>*</span>
                   </label>
+
                   <input
                     id="packageDescription"
                     value={packageDescription}
-                    onChange={(event) => { setPackageDescription(event.target.value); invalidateEstimate(); }}
+                    onChange={(event) => {
+                      setPackageDescription(event.target.value);
+                      invalidateEstimate();
+                    }}
                     placeholder="e.g. Carton boxes, furniture, office supplies"
                     className={fieldClass}
                     maxLength={300}
@@ -424,159 +660,191 @@ function BookDelivery() {
                   />
                 </div>
 
-                <div className="min-w-0">
-                  <label htmlFor="weightKg" className="inline-flex items-center gap-2 text-sm font-bold text-slate-700">
-                    <Weight className="h-4 w-4 text-orange-500" /> Package weight (kg) <span className="text-orange-500">*</span>
-                  </label>
-                  <input
-                    id="weightKg"
-                    type="number"
-                    inputMode="decimal"
-                    value={weightKg}
-                    onChange={(event) => { setWeightKg(event.target.value); invalidateEstimate(); }}
-                    className={fieldClass}
-                    min="0.1"
-                    max="5000"
-                    step="0.1"
-                    required
-                  />
-                  {!validWeight && weightKg !== "" && (
-                    <p className="mt-2 text-xs font-medium text-red-600">Enter a weight from 0.1 to 5000 kg.</p>
-                  )}
-                </div>
+                <div className="lgb-fields">
+                  <div className="lgb-field">
+                    <label htmlFor="weightKg">
+                      <Weight aria-hidden="true" />
+                      Package weight (kg) <span>*</span>
+                    </label>
 
-                <div className="min-w-0">
-                  <label htmlFor="instructions" className="text-sm font-bold text-slate-700">
-                    Special instructions <span className="font-normal text-slate-400">(optional)</span>
-                  </label>
-                  <input
-                    id="instructions"
-                    value={instructions}
-                    onChange={(event) => { setInstructions(event.target.value); invalidateEstimate(); }}
-                    placeholder="e.g. Handle with care"
-                    className={fieldClass}
-                    maxLength={500}
-                  />
+                    <input
+                      id="weightKg"
+                      type="number"
+                      inputMode="decimal"
+                      value={weightKg}
+                      onChange={(event) => {
+                        setWeightKg(event.target.value);
+                        invalidateEstimate();
+                      }}
+                      className={fieldClass}
+                      min="0.1"
+                      max="5000"
+                      step="0.1"
+                      required
+                    />
+
+                    {!validWeight && weightKg !== "" && (
+                      <p className="lgb-error">
+                        Enter a weight from 0.1 to 5000 kg.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="lgb-field">
+                    <label htmlFor="instructions">
+                      Special instructions <em>(optional)</em>
+                    </label>
+
+                    <input
+                      id="instructions"
+                      value={instructions}
+                      onChange={(event) => {
+                        setInstructions(event.target.value);
+                        invalidateEstimate();
+                      }}
+                      placeholder="e.g. Handle with care"
+                      className={fieldClass}
+                      maxLength={500}
+                    />
+                  </div>
                 </div>
               </div>
-            </section>
+            </>
+          )}
 
-            {/* Vehicle selection */}
-            <section className={`${cardClass} p-5 sm:p-7 lg:p-8`}>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <SectionHeading
-                  icon={<Truck className="h-5 w-5" />}
-                  title="Choose your vehicle"
-                  description="Vehicle options and pricing come from the live catalog."
-                />
-                <span className="inline-flex w-fit shrink-0 items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">
-                  <CheckCircle2 className="h-4 w-4" /> Live catalog
+          {/* STEP 3 — Vehicle selection */}
+          {step === 3 && (
+            <>
+              <div className="lgb-title-row">
+                <h2 className="lgb-title">Vehicle Selection</h2>
+
+                <span className="lgp-pill lgp-pill-green">
+                  <CheckCircle2 aria-hidden="true" />
+                  Live catalog
                 </span>
               </div>
 
+              <p className="lgb-lead">
+                Vehicle options and pricing come from the live catalog.
+              </p>
+
               {loadingVehicles && (
-                <div className="mt-7 flex items-center gap-3 rounded-2xl bg-slate-50 p-5 text-sm text-slate-500">
-                  <RefreshCw className="h-5 w-5 animate-spin text-orange-500" />
+                <div className="lgb-loading">
+                  <RefreshCw
+                    className="lgp-spin"
+                    aria-hidden="true"
+                  />
                   Loading available vehicles...
                 </div>
               )}
 
               {vehicleError && !loadingVehicles && (
-                <div role="alert" className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-5">
-                  <p className="text-sm text-red-700">{vehicleError}</p>
-                  <button
-                    type="button"
-                    onClick={() => void loadVehicles()}
-                    className="mt-4 inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
-                  >
-                    <RefreshCw className="h-4 w-4" /> Retry
-                  </button>
+                <div
+                  role="alert"
+                  className="lgp-alert lgp-alert-block"
+                >
+                  <div>
+                    <p>{vehicleError}</p>
+
+                    <button
+                      type="button"
+                      onClick={() => void loadVehicles()}
+                    >
+                      <RefreshCw aria-hidden="true" />
+                      Retry
+                    </button>
+                  </div>
                 </div>
               )}
 
-              {!loadingVehicles && !vehicleError && vehicles.length === 0 && (
-                <p className="mt-6 rounded-2xl bg-slate-50 p-5 text-sm text-slate-500">
-                  No vehicles are available right now.
-                </p>
-              )}
+              {!loadingVehicles &&
+                !vehicleError &&
+                vehicles.length === 0 && (
+                  <p className="lgb-loading">
+                    No vehicles are available right now.
+                  </p>
+                )}
 
-              {!loadingVehicles && !vehicleError && vehicles.length > 0 && (
-                <div className="mt-7 grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  {vehicles.map((vehicle, index) => {
-                    const isSelected = selectedVehicle === vehicle._id;
-                    const canCarry = validWeight && weight <= vehicle.capacityKg;
-                    const canSelect = canCarry && Boolean(vehicle.pricing);
+              {!loadingVehicles &&
+                !vehicleError &&
+                vehicles.length > 0 && (
+                  <div className="lgb-vehicles">
+                    {vehicles.map((vehicle) => {
+                      const isSelected =
+                        selectedVehicle === vehicle._id;
 
-                    return (
-                      <motion.article
-                        key={vehicle._id}
-                        initial={prefersReducedMotion ? false : { opacity: 0, y: 12 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: prefersReducedMotion ? 0 : index * 0.07, duration: 0.3 }}
-                        className={`relative flex min-w-0 flex-col overflow-hidden rounded-2xl border p-4 transition duration-200 sm:p-5 ${isSelected ? "border-orange-400 bg-orange-50/60 shadow-[0_8px_25px_rgba(249,115,22,0.10)] ring-2 ring-orange-100" : "border-slate-200 bg-white hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-lg hover:shadow-slate-900/[0.035]"}`}
-                      >
-                        {isSelected && (
-                          <span className="absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-orange-500 text-white shadow-sm">
-                            <Check className="h-4 w-4" />
-                          </span>
-                        )}
+                      const canCarry =
+                        validWeight && weight <= vehicle.capacityKg;
 
-                        <div className="flex h-28 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-orange-50 via-slate-50 to-white sm:h-32">
-                          {vehicle.imageUrl ? (
-                            <img
-                              src={vehicle.imageUrl}
-                              alt={vehicle.name}
-                              loading="lazy"
-                              className="h-full w-full object-contain p-2"
-                            />
-                          ) : (
-                            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-orange-500 shadow-sm ring-1 ring-slate-100">
-                              <Truck className="h-9 w-9" />
-                            </div>
+                      const canSelect =
+                        canCarry && Boolean(vehicle.pricing);
+
+                      return (
+                        <article
+                          key={vehicle._id}
+                          className={`lgb-vehicle${
+                            isSelected ? " is-selected" : ""
+                          }${canSelect ? "" : " is-disabled"}`}
+                        >
+                          {isSelected && (
+                            <span className="lgb-vehicle-check">
+                              <Check aria-hidden="true" />
+                            </span>
                           )}
-                        </div>
 
-                        <h3 className="mt-5 pr-7 text-base font-extrabold tracking-tight text-slate-900 sm:text-lg">
-                          {vehicle.name}
-                        </h3>
-                        <p className="mt-2 min-h-[3.25rem] text-xs leading-5 text-slate-500 sm:text-sm">
-                          {vehicle.description}
-                        </p>
+                          <div className="lgb-vehicle-img">
+                            {vehicle.imageUrl ? (
+                              <img
+                                src={vehicle.imageUrl}
+                                alt={vehicle.name}
+                                loading="lazy"
+                              />
+                            ) : (
+                              <Truck aria-hidden="true" />
+                            )}
+                          </div>
 
-                        <div className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-slate-700">
-                          <Weight className="h-4 w-4 text-orange-500" />
-                          Up to {vehicle.capacityKg.toLocaleString("en-IN")} kg
-                        </div>
+                          <h3>{vehicle.name}</h3>
+                          <p>{vehicle.description}</p>
 
-                        <div className="mt-4 space-y-2">
-                          {(vehicle.features ?? []).map((feature) => (
-                            <div key={feature} className="flex items-start gap-2 text-xs leading-5 text-slate-500">
-                              <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />
-                              <span>{feature}</span>
-                            </div>
-                          ))}
-                        </div>
+                          <span className="lgb-vehicle-cap">
+                            <Weight aria-hidden="true" />
+                            Up to{" "}
+                            {vehicle.capacityKg.toLocaleString("en-IN")} kg
+                          </span>
 
-                        <div className="mt-auto pt-5">
+                          {(vehicle.features ?? []).length > 0 && (
+                            <ul>
+                              {(vehicle.features ?? []).map((feature) => (
+                                <li key={feature}>
+                                  <Check aria-hidden="true" />
+                                  {feature}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+
                           {vehicle.pricing && (
-                            <div className="mb-4 rounded-xl border border-slate-100 bg-slate-50 p-3.5">
-                              <p className="text-[11px] font-semibold text-slate-500">Minimum fare</p>
-                              <p className="mt-1 text-xl font-black tracking-tight text-slate-900">
+                            <div className="lgb-vehicle-price">
+                              <small>Minimum fare</small>
+                              <strong>
                                 {formatPrice(vehicle.pricing.minimumFare)}
-                              </p>
-                              <p className="mt-1 text-xs text-slate-500">
+                              </strong>
+                              <span>
                                 {formatPrice(vehicle.pricing.perKmRate)} per km
-                              </p>
+                              </span>
                             </div>
                           )}
 
                           {!canCarry && (
-                            <p className="mb-3 text-xs font-medium leading-5 text-amber-700">
-                              This vehicle cannot carry the entered package weight.
+                            <p className="lgb-warn">
+                              This vehicle cannot carry the entered package
+                              weight.
                             </p>
                           )}
+
                           {!vehicle.pricing && (
-                            <p className="mb-3 text-xs font-medium leading-5 text-amber-700">
+                            <p className="lgb-warn">
                               Pricing is not configured for this vehicle yet.
                             </p>
                           )}
@@ -584,146 +852,444 @@ function BookDelivery() {
                           <button
                             type="button"
                             disabled={!canSelect}
-                            onClick={() => { setSelectedVehicle(vehicle._id); invalidateEstimate(); }}
-                            className={`flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-extrabold transition disabled:cursor-not-allowed disabled:opacity-40 ${isSelected ? "bg-orange-500 text-white shadow-md shadow-orange-500/15 hover:bg-orange-600" : "border border-slate-200 bg-white text-slate-700 hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700"}`}
+                            onClick={() => {
+                              setSelectedVehicle(vehicle._id);
+                              invalidateEstimate();
+                            }}
+                            className={`lgp-btn ${
+                              isSelected
+                                ? "lgp-btn-primary"
+                                : "lgp-btn-ghost"
+                            }`}
                           >
-                            {isSelected ? "Selected" : "Select vehicle"}
-                            {isSelected ? <CheckCircle2 className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
+                            {isSelected
+                              ? "Selected"
+                              : "Select vehicle"}
+
+                            {isSelected ? (
+                              <CheckCircle2 aria-hidden="true" />
+                            ) : (
+                              <ArrowRight aria-hidden="true" />
+                            )}
                           </button>
-                        </div>
-                      </motion.article>
-                    );
-                  })}
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+            </>
+          )}
+
+          {/* STEP 4 — Review, fare and payment */}
+          {step === 4 && (
+            <>
+              <h2 className="lgb-title">Review &amp; Book</h2>
+
+              <p className="lgb-lead">
+                Check your details. The server re-validates the route,
+                vehicle and fare when you confirm.
+              </p>
+
+              <dl className="lgb-review">
+                <div>
+                  <dt>
+                    <MapPin aria-hidden="true" /> Pickup
+                  </dt>
+                  <dd>{pickup.trim() || "—"}</dd>
+                </div>
+
+                <div>
+                  <dt>
+                    <MapPin aria-hidden="true" /> Drop
+                  </dt>
+                  <dd>{drop.trim() || "—"}</dd>
+                </div>
+
+                <div>
+                  <dt>
+                    <Package aria-hidden="true" /> Package
+                  </dt>
+                  <dd>
+                    {packageDescription.trim() || "—"} · {weightKg || "—"} kg
+                    {instructions.trim()
+                      ? ` · ${instructions.trim()}`
+                      : ""}
+                  </dd>
+                </div>
+
+                <div>
+                  <dt>
+                    <Truck aria-hidden="true" /> Vehicle
+                  </dt>
+                  <dd>{chosenVehicle?.name || "—"}</dd>
+                </div>
+              </dl>
+
+              {isEstimating && (
+                <div className="lgb-loading">
+                  <RefreshCw
+                    className="lgp-spin"
+                    aria-hidden="true"
+                  />
+                  Calculating your fare...
                 </div>
               )}
-            </section>
+
+              {estimate && (
+                <div className="lgb-fare">
+                  <div className="lgb-fare-head">
+                    <CheckCircle2 aria-hidden="true" />
+                    Fare estimate ready
+                  </div>
+
+                  <dl>
+                    <div>
+                      <dt>Driving distance</dt>
+                      <dd>{estimate.route.distanceKm} km</dd>
+                    </div>
+
+                    <div>
+                      <dt>
+                        <Clock3 aria-hidden="true" /> Estimated time
+                      </dt>
+                      <dd>{estimate.route.durationMinutes} min</dd>
+                    </div>
+
+                    <div>
+                      <dt>Base fare</dt>
+                      <dd>{formatPrice(estimate.fare.baseFare)}</dd>
+                    </div>
+
+                    <div>
+                      <dt>Distance charge</dt>
+                      <dd>{formatPrice(estimate.fare.distanceCharge)}</dd>
+                    </div>
+
+                    <div>
+                      <dt>Weight charge</dt>
+                      <dd>{formatPrice(estimate.fare.weightCharge)}</dd>
+                    </div>
+
+                    <div>
+                      <dt>Service fee</dt>
+                      <dd>{formatPrice(estimate.fare.serviceFee)}</dd>
+                    </div>
+
+                    <div className="lgb-fare-total">
+                      <dt>Estimated total</dt>
+                      <dd>{formatPrice(estimate.fare.estimatedFare)}</dd>
+                    </div>
+                  </dl>
+                </div>
+              )}
+
+              {/* Payment options */}
+              <section className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-extrabold text-slate-900">
+                      Payment preference
+                    </h3>
+
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      Select how you would like to pay. Payment is due after
+                      delivery is completed.
+                    </p>
+                  </div>
+
+                  {paymentSettingsLoading && (
+                    <RefreshCw
+                      className="h-4 w-4 shrink-0 animate-spin text-orange-500"
+                      aria-label="Loading payment settings"
+                    />
+                  )}
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {/* Cash on delivery */}
+                  <button
+                    type="button"
+                    aria-pressed={paymentMethod === "cash_on_delivery"}
+                    disabled={codDistanceExceeded}
+                    onClick={() => {
+                      setPaymentMethod("cash_on_delivery");
+                      setBookingError("");
+                    }}
+                    className={`min-w-0 rounded-xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                      paymentMethod === "cash_on_delivery"
+                        ? "border-orange-400 bg-orange-50 ring-2 ring-orange-100"
+                        : "border-slate-200 bg-white hover:border-orange-200 hover:bg-orange-50/40"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 text-sm font-extrabold text-slate-900">
+                      <Banknote
+                        className="h-4 w-4 shrink-0 text-orange-500"
+                        aria-hidden="true"
+                      />
+                      Cash on delivery
+                    </span>
+
+                    <span className="mt-2 block text-xs leading-5 text-slate-500">
+                      {codMaxDistanceKm === null
+                        ? "Available only when the route passes the server's COD eligibility check."
+                        : `Available for routes up to ${codMaxDistanceKm} km.`}
+                    </span>
+                  </button>
+
+                  {/* Online payment */}
+                  <button
+                    type="button"
+                    aria-pressed={paymentMethod === "online"}
+                    disabled={
+                      !onlinePaymentsEnabled || paymentSettingsLoading
+                    }
+                    onClick={() => {
+                      setPaymentMethod("online");
+                      setBookingError("");
+                    }}
+                    className={`min-w-0 rounded-xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                      paymentMethod === "online"
+                        ? "border-orange-400 bg-orange-50 ring-2 ring-orange-100"
+                        : "border-slate-200 bg-white hover:border-orange-200 hover:bg-orange-50/40"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 text-sm font-extrabold text-slate-900">
+                      <CreditCard
+                        className="h-4 w-4 shrink-0 text-orange-500"
+                        aria-hidden="true"
+                      />
+                      Online payment
+                    </span>
+
+                    <span className="mt-2 block text-xs leading-5 text-slate-500">
+                      {onlinePaymentsEnabled
+                        ? "Pay securely after delivery using Razorpay."
+                        : "Unavailable until the online payment gateway is configured."}
+                    </span>
+                  </button>
+                </div>
+
+                {codDistanceExceeded && estimate && (
+                  <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-800">
+                    This route is {estimate.route.distanceKm} km, above the{" "}
+                    {codMaxDistanceKm} km COD limit.{" "}
+                    {onlinePaymentsEnabled
+                      ? "Select online payment to continue."
+                      : "Online payment is not enabled yet, so this route cannot be booked with the current payment options."}
+                  </p>
+                )}
+
+                {paymentSettingsError && (
+                  <p className="mt-3 text-xs leading-5 text-amber-700">
+                    {paymentSettingsError}
+                  </p>
+                )}
+              </section>
+
+              {estimateError && (
+                <div
+                  role="alert"
+                  className="lgp-alert lgp-alert-block"
+                >
+                  <div>
+                    <p>{estimateError}</p>
+
+                    <button
+                      type="button"
+                      disabled={!canEstimate}
+                      onClick={() => void handleEstimate()}
+                    >
+                      <RefreshCw aria-hidden="true" />
+                      Retry estimate
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {bookingError && (
+                <div
+                  role="alert"
+                  className="lgp-alert lgp-alert-block"
+                >
+                  <div>
+                    <p>{bookingError}</p>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="lgb-nav">
+            {step > 1 ? (
+              <button
+                type="button"
+                className="lgp-btn lgp-btn-ghost"
+                onClick={() =>
+                  setStep(
+                    (current) => (current - 1) as 1 | 2 | 3 | 4
+                  )
+                }
+              >
+                <ArrowLeft aria-hidden="true" />
+                Back
+              </button>
+            ) : (
+              <span />
+            )}
+
+            <span className="lgb-nav-note">
+              <ShieldCheck aria-hidden="true" />
+              Your booking is not submitted until you confirm.
+            </span>
+          </div>
+        </section>
+
+        {/* Booking summary */}
+        <aside
+          className="lgb-summary lgp-card"
+          aria-label="Booking summary"
+        >
+          <h2>Booking Summary</h2>
+
+          <ul>
+            <li>
+              <MapPin className="is-green" aria-hidden="true" />
+              <span>
+                <small>Pickup</small>
+                <strong>{pickup.trim() || "Not selected"}</strong>
+              </span>
+            </li>
+
+            <li>
+              <MapPin aria-hidden="true" />
+              <span>
+                <small>Drop</small>
+                <strong>{drop.trim() || "Not selected"}</strong>
+              </span>
+            </li>
+
+            <li>
+              <Package aria-hidden="true" />
+              <span>
+                <small>Package</small>
+                <strong>
+                  {packageDescription.trim()
+                    ? `${packageDescription.trim()} · ${weightKg || "—"} kg`
+                    : weightKg
+                      ? `${weightKg} kg`
+                      : "Not entered"}
+                </strong>
+              </span>
+            </li>
+
+            <li>
+              <Truck aria-hidden="true" />
+              <span>
+                <small>Vehicle</small>
+                <strong>{chosenVehicle?.name || "Choose a vehicle"}</strong>
+              </span>
+            </li>
+          </ul>
+
+          <div className="lgb-summary-fare">
+            <small>Estimated Fare</small>
+            <strong>
+              {typeof fare === "number" ? formatPrice(fare) : "—"}
+            </strong>
           </div>
 
-          {/* Booking summary: sticky on desktop, normal flow on mobile */}
-          <aside className="min-w-0 lg:sticky lg:top-24">
-            <div className={`${cardClass} overflow-hidden`}>
-              <div className="border-b border-slate-100 bg-gradient-to-r from-orange-50/80 to-white p-5 sm:p-6">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-500 text-white shadow-md shadow-orange-500/15">
-                    <Package className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <h2 className="text-lg font-black tracking-tight text-slate-900">Booking summary</h2>
-                    <p className="mt-0.5 text-xs text-slate-500">Review your delivery details</p>
-                  </div>
-                </div>
-              </div>
+          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <small className="block text-xs font-semibold text-slate-500">
+              Payment method
+            </small>
 
-              <div className="p-5 sm:p-6">
-                <div className="space-y-5">
-                  <div className="flex items-start gap-3">
-                    <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-semibold text-slate-400">Pickup</p>
-                      <p className="mt-1 break-words text-sm font-semibold leading-5 text-slate-700">{pickup.trim() || "Not selected"}</p>
-                    </div>
-                  </div>
-                  <div className="ml-[7px] h-4 border-l border-dashed border-slate-300" />
-                  <div className="flex items-start gap-3">
-                    <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-orange-500" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-semibold text-slate-400">Drop</p>
-                      <p className="mt-1 break-words text-sm font-semibold leading-5 text-slate-700">{drop.trim() || "Not selected"}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <Truck className="mt-0.5 h-4 w-4 shrink-0 text-orange-500" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-semibold text-slate-400">Vehicle</p>
-                      <p className="mt-1 text-sm font-semibold text-slate-700">{chosenVehicle?.name || "Choose a vehicle"}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <Weight className="mt-0.5 h-4 w-4 shrink-0 text-orange-500" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-semibold text-slate-400">Package weight</p>
-                      <p className="mt-1 text-sm font-semibold text-slate-700">{weightKg ? `${weightKg} kg` : "Not entered"}</p>
-                    </div>
-                  </div>
-                </div>
+            <strong className="mt-1 block break-words text-sm text-slate-800">
+              {paymentMethod === "cash_on_delivery"
+                ? "Cash on delivery"
+                : "Online payment"}
+            </strong>
 
-                {estimate && (
-                  <motion.div
-                    initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 sm:p-5"
-                  >
-                    <div className="flex items-center gap-2 text-sm font-extrabold text-emerald-700">
-                      <CheckCircle2 className="h-4 w-4" /> Fare estimate ready
-                    </div>
-                    <p className="mt-3 text-xs font-medium text-slate-500">Estimated delivery fare</p>
-                    <p className="mt-1 text-3xl font-black tracking-tight text-slate-950 sm:text-[2rem]">
-                      {formatPrice(estimate.fare.estimatedFare)}
-                    </p>
+            {paymentMethod === "online" && !onlinePaymentsEnabled && (
+              <span className="mt-1 block text-xs leading-5 text-amber-700">
+                Gateway not configured
+              </span>
+            )}
+          </div>
 
-                    <div className="mt-4 space-y-3 border-t border-emerald-200/80 pt-4 text-xs sm:text-sm">
-                      <div className="flex justify-between gap-3"><span className="text-slate-500">Driving distance</span><span className="font-bold text-slate-800">{estimate.route.distanceKm} km</span></div>
-                      <div className="flex justify-between gap-3"><span className="text-slate-500">Estimated time</span><span className="inline-flex items-center gap-1 font-bold text-slate-800"><Clock3 className="h-3.5 w-3.5" />{estimate.route.durationMinutes} min</span></div>
-                      <div className="flex justify-between gap-3"><span className="text-slate-500">Base fare</span><span className="font-semibold text-slate-700">{formatPrice(estimate.fare.baseFare)}</span></div>
-                      <div className="flex justify-between gap-3"><span className="text-slate-500">Distance charge</span><span className="font-semibold text-slate-700">{formatPrice(estimate.fare.distanceCharge)}</span></div>
-                      <div className="flex justify-between gap-3"><span className="text-slate-500">Weight charge</span><span className="font-semibold text-slate-700">{formatPrice(estimate.fare.weightCharge)}</span></div>
-                      <div className="flex justify-between gap-3"><span className="text-slate-500">Service fee</span><span className="font-semibold text-slate-700">{formatPrice(estimate.fare.serviceFee)}</span></div>
-                      <div className="flex justify-between gap-3 border-t border-emerald-200/80 pt-3 font-extrabold"><span className="text-slate-800">Estimated total</span><span className="text-emerald-700">{formatPrice(estimate.fare.estimatedFare)}</span></div>
-                    </div>
-                  </motion.div>
-                )}
+          {step < 4 && (
+            <button
+              type="button"
+              className="lgp-btn lgp-btn-primary lgp-btn-block"
+              disabled={!stepValid[step]}
+              onClick={() =>
+                setStep(
+                  (current) => (current + 1) as 1 | 2 | 3 | 4
+                )
+              }
+            >
+              Continue <ArrowRight aria-hidden="true" />
+            </button>
+          )}
 
-                {estimateError && (
-                  <div role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 p-3.5 text-sm leading-5 text-red-700">
-                    {estimateError}
-                  </div>
-                )}
-                {bookingError && (
-                  <div role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 p-3.5 text-sm leading-5 text-red-700">
-                    {bookingError}
-                  </div>
-                )}
+          {step === 4 && !estimate && (
+            <button
+              type="button"
+              className="lgp-btn lgp-btn-primary lgp-btn-block"
+              disabled={!canEstimate}
+              onClick={() => void handleEstimate()}
+            >
+              {isEstimating ? (
+                <>
+                  <RefreshCw
+                    className="lgp-spin"
+                    aria-hidden="true"
+                  />
+                  Calculating fare...
+                </>
+              ) : (
+                <>
+                  Calculate estimated fare{" "}
+                  <ArrowRight aria-hidden="true" />
+                </>
+              )}
+            </button>
+          )}
 
-                {!estimate ? (
-                  <button
-                    type="button"
-                    disabled={!canEstimate}
-                    onClick={() => void handleEstimate()}
-                    className="mt-6 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-orange-500/15 transition hover:-translate-y-0.5 hover:bg-orange-600 hover:shadow-orange-500/20 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
-                  >
-                    {isEstimating ? <><RefreshCw className="h-4 w-4 animate-spin" /> Calculating fare...</> : <>Calculate estimated fare <ArrowRight className="h-4 w-4" /></>}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={isCreatingBooking}
-                    onClick={() => void handleConfirmBooking()}
-                    className="mt-6 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-orange-500/15 transition hover:-translate-y-0.5 hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
-                  >
-                    {isCreatingBooking ? <><RefreshCw className="h-4 w-4 animate-spin" /> Creating booking...</> : <>Confirm booking <ArrowRight className="h-4 w-4" /></>}
-                  </button>
-                )}
+          {step === 4 && estimate && (
+            <button
+              type="button"
+              className="lgp-btn lgp-btn-primary lgp-btn-block"
+              disabled={!canConfirmBooking}
+              onClick={() => void handleConfirmBooking()}
+            >
+              {isCreatingBooking ? (
+                <>
+                  <RefreshCw
+                    className="lgp-spin"
+                    aria-hidden="true"
+                  />
+                  Creating booking...
+                </>
+              ) : (
+                <>
+                  Confirm Booking <ArrowRight aria-hidden="true" />
+                </>
+              )}
+            </button>
+          )}
 
-                {!chosenVehicle && (
-                  <p className="mt-3 text-center text-xs leading-5 text-slate-400">Select a vehicle to continue.</p>
-                )}
-                {estimate && (
-                  <p className="mt-3 text-center text-xs leading-5 text-slate-500">The server rechecks the route and fare when you confirm.</p>
-                )}
-                <p className="mt-3 text-center text-xs leading-5 text-slate-400">Your booking is not submitted until you confirm.</p>
-              </div>
-            </div>
-
-            <div className="mt-4 flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4">
-              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
-              <p className="text-xs leading-5 text-slate-500">
-                <strong className="text-slate-700">Clear estimates.</strong> The backend validates the final route, vehicle and fare before saving your booking.
-              </p>
-            </div>
-          </aside>
-        </div>
-      </main>
-    </div>
+          {step < 4 && !stepValid[step] && (
+            <p className="lgb-summary-note">
+              {step === 1
+                ? "Enter pickup and drop locations to continue."
+                : step === 2
+                  ? "Describe your package and weight to continue."
+                  : "Select a vehicle to continue."}
+            </p>
+          )}
+        </aside>
+      </div>
+    </main>
   );
 }
 

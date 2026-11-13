@@ -67,6 +67,33 @@ function formatDate(value?: string) {
     : new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(date);
 }
 
+async function loadAllDeliveredBookings(): Promise<Booking[]> {
+  const allBookings: Booking[] = [];
+  let page = 1;
+  let totalPages = 1;
+
+  // The API caps each page at 50. Walk every page so older delivered orders
+  // remain eligible for review instead of loading only the latest 50.
+  while (page <= totalPages) {
+    const response = await api.get("/bookings/my", {
+      params: { page, limit: 50, status: "delivered" },
+    });
+    if (response.data?.success === false) {
+      throw new Error(response.data?.message || "Unable to load your delivered bookings.");
+    }
+
+    const records = Array.isArray(response.data?.bookings) ? response.data.bookings : [];
+    allBookings.push(...records);
+    const reportedPages = Number(response.data?.pagination?.totalPages);
+    totalPages = Number.isFinite(reportedPages) && reportedPages >= 0
+      ? Math.max(page, reportedPages)
+      : records.length >= 50 ? page + 1 : page;
+    page += 1;
+  }
+
+  return allBookings;
+}
+
 const inputClass =
   "mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-orange-400 focus:ring-4 focus:ring-orange-100";
 
@@ -87,15 +114,15 @@ function CustomerReviews() {
     setLoading(true);
     setPageError("");
     try {
-      const [bookingResponse, reviewResponse] = await Promise.all([
-        api.get("/bookings/my", { params: { page: 1, limit: 100 } }),
+      const [deliveredBookings, reviewResponse] = await Promise.all([
+        loadAllDeliveredBookings(),
         api.get("/reviews/mine"),
       ]);
-      if (!bookingResponse.data?.success || !reviewResponse.data?.success) {
-        throw new Error("Unable to load your bookings and reviews.");
+      if (reviewResponse.data?.success === false) {
+        throw new Error(reviewResponse.data?.message || "Unable to load your reviews.");
       }
-      setBookings(Array.isArray(bookingResponse.data.bookings) ? bookingResponse.data.bookings : []);
-      setReviews(Array.isArray(reviewResponse.data.reviews) ? reviewResponse.data.reviews : []);
+      setBookings(deliveredBookings);
+      setReviews(Array.isArray(reviewResponse.data?.reviews) ? reviewResponse.data.reviews : []);
     } catch (error: unknown) {
       setPageError(errorMessage(error, "Unable to load your review information."));
     } finally {
@@ -157,12 +184,19 @@ function CustomerReviews() {
   }
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-slate-50 text-slate-900">
-
-      <main className="mx-auto grid w-full max-w-6xl gap-6 px-4 py-7 sm:px-6 sm:py-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)] lg:gap-8">
-        <section>
+    <div className="min-h-full overflow-x-hidden bg-[#f4f7fb] text-slate-900">
+      <section className="mx-auto max-w-[1500px] px-4 pt-5 sm:px-6 sm:pt-7 xl:px-8">
+        <div className="relative isolate overflow-hidden rounded-[26px] bg-gradient-to-br from-[#101c30] via-[#172943] to-[#252a35] p-5 text-white shadow-[0_16px_38px_rgba(15,23,42,0.13)] sm:p-7 lg:p-8">
+          <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-20 -z-10 h-64 w-64 rounded-full border border-white/10 sm:h-80 sm:w-80" />
+          <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-[0.16em] text-orange-300 sm:text-xs"><Star className="h-3.5 w-3.5" /> Customer workspace</span>
+          <h1 className="mt-4 text-[clamp(1.8rem,3vw,2.7rem)] font-black leading-tight tracking-tight">Reviews & feedback</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">Review completed deliveries and see the feedback you have already shared with LogiGo.</p>
+        </div>
+      </section>
+      <main className="mx-auto grid w-full max-w-6xl gap-6 px-4 py-5 sm:px-6 sm:py-7 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)] lg:gap-8 xl:py-8">
+        <section className="order-2 min-w-0 lg:order-2">
           <div className="inline-flex items-center gap-2 rounded-full border border-orange-100 bg-orange-50 px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-[0.15em] text-orange-700 sm:text-xs"><Star className="h-3.5 w-3.5" /> Your experience matters</div>
-          <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">Rate your delivery</h1>
+          <h2 className="mt-4 text-[clamp(1.45rem,2vw,1.9rem)] font-black leading-tight tracking-tight text-slate-900">Rate your delivery</h2>
           <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">Tell us how your delivery went. Reviews are available only for completed deliveries, and each booking can be reviewed once.</p>
 
           <div className="mt-7 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
@@ -188,10 +222,14 @@ function CustomerReviews() {
           </div>
         </section>
 
-        <aside className="min-w-0">
+        <aside className="order-1 min-w-0 lg:order-1">
           <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
             <div className="flex items-start justify-between gap-3"><div><h2 className="text-lg font-black">Your past reviews</h2><p className="mt-1 text-sm text-slate-500">Reviews submitted from this account.</p></div><span className="rounded-xl bg-orange-50 px-3 py-2 text-sm font-black text-orange-700">{reviews.length}</span></div>
-            {loading ? <div className="mt-5 flex items-center gap-2 text-sm text-slate-500"><RefreshCw className="h-4 w-4 animate-spin" />Loading reviews…</div> : reviews.length === 0 ? <div className="mt-5 rounded-2xl bg-slate-50 px-4 py-8 text-center"><Star className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-3 text-sm font-bold text-slate-700">No reviews submitted yet</p><p className="mt-1 text-sm text-slate-500">Your submitted reviews will be listed here.</p></div> : <div className="mt-5 space-y-3">{reviews.map((review) => <article key={review._id} className="rounded-2xl border border-slate-200 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-black text-slate-800">{bookingCodeOf(review)}</p><span className="text-xs font-semibold text-slate-500">{formatDate(review.createdAt)}</span></div><div className="mt-2 flex items-center gap-1" aria-label={`${review.rating} out of 5 stars`}>{[1, 2, 3, 4, 5].map((value) => <Star key={value} className={`h-4 w-4 ${value <= review.rating ? "text-amber-400" : "text-slate-200"}`} fill="currentColor" />)}<span className="ml-1 text-xs font-bold text-slate-600">{review.rating}/5</span></div>{review.title && <h3 className="mt-3 text-sm font-extrabold text-slate-800">{review.title}</h3>}<p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">{review.comment}</p></article>)}</div>}
+
+            {loading ? <div className="mt-5 flex items-center gap-2 text-sm text-slate-500"><RefreshCw className="h-4 w-4 animate-spin" />Loading reviews…</div> : reviews.length === 0 ? <div className="mt-5 rounded-2xl bg-slate-50 px-4 py-8 text-center"><Star className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-3 text-sm font-bold text-slate-700">No reviews submitted yet</p><p className="mt-1 text-sm text-slate-500">Your submitted reviews will be listed here.</p></div> : <>
+              <div className="mt-5 hidden overflow-x-auto md:block"><table className="w-full min-w-[540px] text-left text-sm"><thead className="bg-slate-50 text-[11px] font-extrabold uppercase tracking-wider text-slate-500"><tr><th scope="col" className="px-3 py-3">Booking</th><th scope="col" className="px-3 py-3">Date</th><th scope="col" className="px-3 py-3">Rating</th><th scope="col" className="px-3 py-3">Feedback</th></tr></thead><tbody className="divide-y divide-slate-100">{reviews.map((review) => <tr key={review._id} className="align-top"><td className="break-all px-3 py-4 font-extrabold text-slate-900">{bookingCodeOf(review)}</td><td className="whitespace-nowrap px-3 py-4 text-xs text-slate-500">{formatDate(review.createdAt)}</td><td className="px-3 py-4"><span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1.5 text-xs font-extrabold text-amber-700"><Star className="h-3.5 w-3.5 fill-current" />{review.rating}/5</span></td><td className="max-w-[250px] px-3 py-4"><p className="break-words font-bold text-slate-800">{review.title || "Review"}</p><p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 text-slate-600">{review.comment}</p></td></tr>)}</tbody></table></div>
+              <div className="mt-5 divide-y divide-slate-100 rounded-xl border border-slate-100 md:hidden">{reviews.map((review) => <article key={review._id} className="min-w-0 p-3.5"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="break-all text-xs font-extrabold text-slate-900">{bookingCodeOf(review)}</p><p className="mt-1 text-[11px] text-slate-500">{formatDate(review.createdAt)}</p></div><span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-extrabold text-amber-700"><Star className="h-3 w-3 fill-current" />{review.rating}/5</span></div><p className="mt-2 break-words text-xs font-bold text-slate-800">{review.title || "Review"}</p><p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 text-slate-600">{review.comment}</p></article>)}</div>
+            </>}
           </div>
           <div className="mt-5 flex items-start gap-3 rounded-2xl border border-orange-100 bg-orange-50/70 p-4"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-orange-600"><CheckCircle2 className="h-4 w-4" /></span><p className="text-sm leading-6 text-slate-600"><strong className="text-slate-800">One booking, one review.</strong> The server verifies that the booking belongs to you and has been delivered before accepting your review.</p></div>
         </aside>
