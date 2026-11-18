@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import api from "../../services/api";
+import { subscribeToBookingTracking, type RealtimeTrackingPoint } from "../../services/trackingSocket";
 
 type TrackingPoint = {
   latitude: number;
@@ -42,6 +43,14 @@ type Props = {
 };
 
 const POLL_INTERVAL_MS = 10_000;
+const TRACKABLE_STATUSES = new Set([
+  "accepted",
+  "arriving_at_pickup",
+  "arrived_at_pickup",
+  "picked_up",
+  "in_transit",
+  "arrived_at_drop",
+]);
 const STALE_AFTER_MS = 90_000;
 
 const OSM_TILE_URL =
@@ -132,6 +141,42 @@ function getDriverIcon() {
   });
 }
 
+function mergeTrackingPayload(
+  current: TrackingPayload | null,
+  next: TrackingPayload
+): TrackingPayload {
+  if (!current?.location) return next;
+
+  if (!next.location) {
+    const currentCapturedAt = Date.parse(current.location.capturedAt || "");
+    const currentAge = Number.isFinite(currentCapturedAt)
+      ? Date.now() - currentCapturedAt
+      : Number.POSITIVE_INFINITY;
+    const terminalOrUnassigned =
+      next.reason === "delivery_finished" ||
+      next.reason === "waiting_for_driver";
+
+    if (!terminalOrUnassigned && currentAge <= STALE_AFTER_MS) {
+      return { ...next, location: current.location };
+    }
+    return next;
+  }
+
+  const currentCapturedAt = Date.parse(current.location.capturedAt || "");
+  const nextCapturedAt = Date.parse(next.location.capturedAt || "");
+
+  // Do not let a late REST response replace a newer realtime location.
+  if (
+    Number.isFinite(currentCapturedAt) &&
+    Number.isFinite(nextCapturedAt) &&
+    currentCapturedAt > nextCapturedAt
+  ) {
+    return { ...next, location: current.location };
+  }
+
+  return next;
+}
+
 function formatTime(value?: string) {
   if (!value || Number.isNaN(new Date(value).getTime())) {
     return "Not available";
@@ -192,6 +237,45 @@ export default function AdminBookingTracking({
     };
   }, [bookingId]);
 
+  // Subscribe only while this booking is in a location-trackable delivery state.
+  // The existing polling effect remains active as a fallback.
+  useEffect(() => {
+    if (!bookingId || !TRACKABLE_STATUSES.has(status)) return;
+
+    return subscribeToBookingTracking(
+      bookingId,
+      (nextLocation: RealtimeTrackingPoint) => {
+        const location: TrackingPoint = {
+          latitude: nextLocation.latitude,
+          longitude: nextLocation.longitude,
+          accuracyMeters: nextLocation.accuracyMeters ?? null,
+          headingDegrees: nextLocation.headingDegrees ?? null,
+          speedMetersPerSecond: nextLocation.speedMetersPerSecond ?? null,
+          capturedAt: nextLocation.capturedAt || new Date().toISOString(),
+        };
+
+        setPayload((current) =>
+          mergeTrackingPayload(current, {
+            success: true,
+            trackingActive: true,
+            reason: null,
+            location,
+          })
+        );
+        setError("");
+      },
+      () => {
+        setPayload((current) => ({
+          ...(current ?? {}),
+          success: true,
+          trackingActive: false,
+          reason: "waiting_for_location",
+          location: null,
+        }));
+      }
+    );
+  }, [bookingId, status]);
+
   // Fetch the latest location and prevent overlapping requests.
   useEffect(() => {
     let disposed = false;
@@ -243,7 +327,7 @@ export default function AdminBookingTracking({
           throw new Error("The server returned invalid GPS coordinates.");
         }
 
-        setPayload(data);
+        setPayload((current) => mergeTrackingPayload(current, data));
         setError("");
       } catch (requestError: unknown) {
         if (
@@ -454,7 +538,7 @@ export default function AdminBookingTracking({
           throw new Error("The server returned invalid GPS coordinates.");
         }
 
-        setPayload(data);
+        setPayload((current) => mergeTrackingPayload(current, data));
         setError("");
       })
       .catch((requestError: unknown) => {
@@ -503,8 +587,7 @@ export default function AdminBookingTracking({
             </h3>
 
             <p className="mt-1 text-xs leading-5 text-slate-600">
-              Status: {statusLabel(status)} · Refreshes every 10 seconds
-              while this panel is open.
+              Status: {statusLabel(status)} · Live updates with 10-second fallback refresh.
             </p>
           </div>
         </div>

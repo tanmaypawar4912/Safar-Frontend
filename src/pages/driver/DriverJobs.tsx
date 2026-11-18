@@ -428,9 +428,9 @@ export default function DriverJobs() {
             </div>
 
             <p className="text-xs leading-5 text-slate-500">
-              Only one eligible driver receives a booking offer at a time. If that
-              driver declines or the offer expires, LogiGo checks the next eligible
-              driver. Offers expire, so respond promptly.
+              New bookings are sent to all eligible online drivers at the same time.
+              The first driver to accept gets the booking; competing offers become
+              unavailable automatically. Offers expire, so respond promptly.
             </p>
 
             {filteredOffers.map((job) => (

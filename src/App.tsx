@@ -20,13 +20,13 @@ import CustomerComplaints from "./pages/customer/CustomerComplaints";
 
 import DriverDashboard from "./pages/driver/DriverDashboard";
 import DriverProfile from "./pages/driver/DriverProfile";
-import DriverOnboarding from "./pages/driver/DriverOnboarding";
 import DriverVerification from "./pages/driver/DriverVerification";
 import DriverJobs from "./pages/driver/DriverJobs";
 import DriverVehicleDetails from "./pages/driver/DriverVehicleDetails";
 import DriverDocuments from "./pages/driver/DriverDocuments";
 import DriverReviews from "./pages/driver/DriverReviews";
 import DriverCompleted from "./pages/driver/DriverCompleted";
+import DriverEarning from "./pages/driver/DriverEarning";
 
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminDriverApprovals from "./pages/admin/AdminDriverApprovals";
@@ -40,6 +40,7 @@ import AdminComplaints from "./pages/admin/AdminComplaints";
 import AdminReviews from "./pages/admin/AdminReviews";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminEnterpriseEnquiries from "./pages/admin/AdminEnterpriseEnquiries";
+import AdminPayments from "./pages/admin/AdminPayments";
 
 import ProtectedRoute from "./routes/ProtectedRoute";
 import DashboardLayout from "./components/layout/DashboardLayout";
@@ -117,10 +118,6 @@ function App() {
         element={<WorkspaceRoute role="driver"><DriverJobs /></WorkspaceRoute>}
       />
       <Route
-        path="/driver/onboarding"
-        element={<WorkspaceRoute role="driver"><DriverOnboarding /></WorkspaceRoute>}
-      />
-      <Route
         path="/driver/profile"
         element={<WorkspaceRoute role="driver"><DriverProfile /></WorkspaceRoute>}
       />
@@ -135,6 +132,10 @@ function App() {
       <Route
         path="/driver/completed"
         element={<WorkspaceRoute role="driver"><DriverCompleted /></WorkspaceRoute>}
+      />
+      <Route
+        path="/driver/earnings"
+        element={<WorkspaceRoute role="driver"><DriverEarning /></WorkspaceRoute>}
       />
       <Route
         path="/driver/vehicles"
@@ -177,6 +178,10 @@ function App() {
       <Route
         path="/admin/pricing"
         element={<WorkspaceRoute role="admin"><AdminPricing /></WorkspaceRoute>}
+      />
+      <Route
+        path="/admin/payments"
+        element={<WorkspaceRoute role="admin"><AdminPayments /></WorkspaceRoute>}
       />
       <Route
         path="/admin/complaints"

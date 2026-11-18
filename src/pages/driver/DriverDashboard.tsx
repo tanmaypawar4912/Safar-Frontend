@@ -42,7 +42,7 @@ interface DriverOverviewSummary {
   totalReviews: number;
   averageRating: number;
   completedDeliveries: number;
-  completedValue: number;
+  totalDriverEarnings: number | null;
 }
 
 const ACTIVE_STATUSES = [
@@ -82,13 +82,14 @@ export default function DriverDashboard() {
   const [presenceBusy, setPresenceBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [earningsError, setEarningsError] = useState("");
   const [extrasLoading, setExtrasLoading] = useState(true);
 
   const [overview, setOverview] = useState<DriverOverviewSummary>({
     totalReviews: 0,
     averageRating: 0,
     completedDeliveries: 0,
-    completedValue: 0,
+    totalDriverEarnings: null,
   });
 
   const loadProfile = useCallback(async () => {
@@ -127,17 +128,64 @@ export default function DriverDashboard() {
   const loadOverviewExtras = useCallback(async () => {
     setExtrasLoading(true);
 
-    const [reviewResult, completedResult] = await Promise.allSettled([
+    const [reviewResult, completedResult, earningsResult] = await Promise.allSettled([
       api.get("/reviews/driver/mine", {
         params: { page: 1, limit: 1 },
       }),
       api.get("/bookings/driver/completed", {
         params: { page: 1, limit: 50 },
       }),
+      api.get("/financial-ledger/driver/summary"),
     ]);
 
+    let nextEarnings: number | null = null;
+    let nextEarningsError = "";
+
+    if (
+      earningsResult.status === "fulfilled" &&
+      earningsResult.value.data?.success &&
+      earningsResult.value.data?.summary
+    ) {
+      const summary = earningsResult.value.data.summary;
+      const onlineEarningsAccrued = Number(
+        summary.driverEarningsAccruedRupees ??
+          summary.driverEarningsPayableRupees ??
+          0
+      );
+      const codEarningsRetained = Number(
+        summary.driverEarningsRetainedCodRupees ?? 0
+      );
+
+      if (
+        Number.isFinite(onlineEarningsAccrued) &&
+        onlineEarningsAccrued >= 0 &&
+        Number.isFinite(codEarningsRetained) &&
+        codEarningsRetained >= 0
+      ) {
+        // Earnings means the driver's share, not the customer's gross fare.
+        // COD earnings are already retained as cash by the driver; online
+        // earnings are accrued here but may await customer payment capture.
+        nextEarnings = Number(
+          (onlineEarningsAccrued + codEarningsRetained).toFixed(2)
+        );
+      } else {
+        nextEarningsError = "The financial ledger returned an invalid earnings total.";
+      }
+    } else if (earningsResult.status === "rejected") {
+      nextEarningsError = getDriverError(
+        earningsResult.reason,
+        "Unable to load your earnings from the financial ledger."
+      );
+    } else {
+      nextEarningsError =
+        earningsResult.status === "fulfilled"
+          ? earningsResult.value.data?.message ||
+            "Unable to load your earnings from the financial ledger."
+          : "Unable to load your earnings from the financial ledger.";
+    }
+
     setOverview((current) => {
-      const next = { ...current };
+      const next = { ...current, totalDriverEarnings: nextEarnings };
 
       if (
         reviewResult.status === "fulfilled" &&
@@ -158,19 +206,12 @@ export default function DriverDashboard() {
         next.completedDeliveries = Number(
           completedResult.value.data?.pagination?.total || 0
         );
-        const completedList = completedResult.value.data?.bookings ?? completedResult.value.data?.data?.bookings ?? [];
-        next.completedValue = Array.isArray(completedList)
-          ? completedList.reduce(
-              (sum: number, item: DriverJob) =>
-                sum + Number(item?.fare?.finalFare ?? item?.fare?.estimatedFare ?? 0),
-              0
-            )
-          : 0;
       }
 
       return next;
     });
 
+    setEarningsError(nextEarningsError);
     setExtrasLoading(false);
   }, []);
 
@@ -199,7 +240,16 @@ export default function DriverDashboard() {
       { label: "Active Jobs", value: activeJobs.length, icon: Activity, tone: "blue", loading: jobsLoading },
       { label: "Upcoming", value: upcomingJobs.length, icon: Clock3, tone: "orange", loading: jobsLoading },
       { label: "Completed", value: overview.completedDeliveries, icon: CheckCircle2, tone: "green", loading: extrasLoading },
-      { label: "Earnings", value: formatDriverPrice(overview.completedValue), icon: Wallet, tone: "orange", loading: extrasLoading },
+      {
+        label: "Earnings",
+        value:
+          overview.totalDriverEarnings === null
+            ? "—"
+            : formatDriverPrice(overview.totalDriverEarnings),
+        icon: Wallet,
+        tone: "orange",
+        loading: extrasLoading,
+      },
     ],
     [activeJobs.length, upcomingJobs.length, overview, jobsLoading, extrasLoading]
   );
@@ -275,11 +325,11 @@ export default function DriverDashboard() {
         </div>
       </header>
 
-      {(error || jobsError) && (
+      {(error || jobsError || earningsError) && (
         <div role="alert" className="lgp-alert lgp-alert-block">
           <div>
             <p>
-              {error || jobsError}
+              {error || jobsError || earningsError}
               <button
                 type="button"
                 onClick={() => {
@@ -309,7 +359,7 @@ export default function DriverDashboard() {
             <h2>Complete your driver profile</h2>
             <p>Submit your licence, vehicle information and required photos/documents to request administrator approval.</p>
           </div>
-          <Link to="/driver/onboarding" className="lgp-btn lgp-btn-primary">Complete profile <ArrowRight aria-hidden="true" /></Link>
+          <Link to="/driver/profile" className="lgp-btn lgp-btn-primary">Complete profile <ArrowRight aria-hidden="true" /></Link>
         </section>
       )}
 
@@ -440,7 +490,9 @@ export default function DriverDashboard() {
           <ArrowRight aria-hidden="true" />
         </Link>
       </section>
-      <p className="lgp-footnote">Earnings shows the total fare of your completed deliveries (latest 50). It is not a payout statement.</p>
+      <p className="lgp-footnote">
+        Earnings shows your driver share recorded in the financial ledger (online earnings accrued plus COD earnings retained), not the customer's gross fare. Online earnings become payout-eligible only after customer payment is captured; COD commission may be due to LogiGo. This is not a payout or settlement statement.
+      </p>
     </main>
   );
 }

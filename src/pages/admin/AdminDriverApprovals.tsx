@@ -63,7 +63,7 @@ export default function AdminDriverApprovals() {
     const note = (reviewNotes[`profile-${driver._id}`] || "").trim();
     if (decision === "reject" && note.length < 3) { setError("Add a short admin note before rejecting a profile change."); return; }
     setBusyId(`profile-${driver._id}`); setError(""); setNotice("");
-    try { const response = await api.patch(`/drivers/admin/profiles/${driver._id}/change-request`, { decision, reviewNote: note }); if (!response.data?.success) throw new Error(response.data?.message || "Could not review profile change."); setNotice(response.data.message || `Profile change ${decision}d.`); await loadDrivers(); }
+    try { const response = await api.patch(`/drivers/admin/profiles/${driver._id}/change-request/review`, { decision, reviewNote: note }); if (!response.data?.success) throw new Error(response.data?.message || "Could not review profile change."); setNotice(response.data.message || `Profile change ${decision}d.`); await loadDrivers(); }
     catch (e: unknown) { setError(errorMessage(e, "Could not review profile change.")); }
     finally { setBusyId(null); }
   }
@@ -73,7 +73,7 @@ export default function AdminDriverApprovals() {
     const note = (reviewNotes[key] || "").trim();
     if (decision === "reject" && note.length < 3) { setError("Add a reason of at least 3 characters before rejecting a vehicle request."); return; }
     setBusyId(key); setError(""); setNotice("");
-    const endpoint = isChange ? `/drivers/admin/profiles/${driver._id}/vehicles/${vehicle._id}/change-request` : `/drivers/admin/profiles/${driver._id}/vehicles/${vehicle._id}/review`;
+    const endpoint = isChange ? `/drivers/admin/profiles/${driver._id}/vehicles/${vehicle._id}/change-request/review` : `/drivers/admin/profiles/${driver._id}/vehicles/${vehicle._id}/review`;
     const payload = isChange ? { decision, reviewNote: note } : { decision, rejectionReason: note };
     try { const response = await api.patch(endpoint, payload); if (!response.data?.success) throw new Error(response.data?.message || "Could not review vehicle request."); setNotice(response.data.message || `Vehicle request ${decision}d.`); await loadDrivers(); }
     catch (e: unknown) { setError(errorMessage(e, "Could not review vehicle request.")); }
