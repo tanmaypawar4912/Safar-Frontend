@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 
 import api from "../../services/api";
-import { subscribeToBookingTracking, type RealtimeTrackingPoint } from "../../services/trackingSocket";
+import { subscribeToBookingTracking } from "../../services/trackingSocket";
 
 type Props = {
   bookingId: string;
@@ -39,6 +39,7 @@ type TrackingResponse = {
     | "delivery_finished"
     | "waiting_for_driver"
     | "waiting_for_location"
+    | "sharing_stopped"
     | null;
 
   location: LiveLocation | null;
@@ -120,44 +121,6 @@ function getMapDriverIcon() {
   });
 }
 
-function mergeTrackingResponse(
-  current: TrackingResponse | null,
-  next: TrackingResponse
-): TrackingResponse {
-  if (!current?.location) return next;
-
-  if (!next.location) {
-    const currentCapturedAt = Date.parse(current.location.capturedAt);
-    const currentAge = Number.isFinite(currentCapturedAt)
-      ? Date.now() - currentCapturedAt
-      : Number.POSITIVE_INFINITY;
-    const terminalOrUnassigned =
-      next.reason === "delivery_finished" ||
-      next.reason === "waiting_for_driver";
-
-    // Ignore a late empty poll briefly after a realtime point. Once that point
-    // is stale, accept the server's empty result and show the waiting state.
-    if (!terminalOrUnassigned && currentAge <= STALE_AFTER_MS) {
-      return { ...next, location: current.location };
-    }
-    return next;
-  }
-
-  const currentCapturedAt = Date.parse(current.location.capturedAt);
-  const nextCapturedAt = Date.parse(next.location.capturedAt);
-
-  // A slower REST poll must never roll back a newer Socket.IO location.
-  if (
-    Number.isFinite(currentCapturedAt) &&
-    Number.isFinite(nextCapturedAt) &&
-    currentCapturedAt > nextCapturedAt
-  ) {
-    return { ...next, location: current.location };
-  }
-
-  return next;
-}
-
 export default function BookingLiveTracking({
   bookingId,
   status,
@@ -210,44 +173,6 @@ export default function BookingLiveTracking({
     };
   }, [bookingId]);
 
-  // Realtime updates are an enhancement; REST polling below remains the fallback.
-  useEffect(() => {
-    if (!bookingId || !shouldPoll || terminal) return;
-
-    return subscribeToBookingTracking(
-      bookingId,
-      (nextLocation: RealtimeTrackingPoint) => {
-        const location: LiveLocation = {
-          latitude: nextLocation.latitude,
-          longitude: nextLocation.longitude,
-          accuracyMeters: nextLocation.accuracyMeters ?? null,
-          headingDegrees: nextLocation.headingDegrees ?? null,
-          speedMetersPerSecond: nextLocation.speedMetersPerSecond ?? null,
-          capturedAt: nextLocation.capturedAt || new Date().toISOString(),
-        };
-
-        setTracking((current) =>
-          mergeTrackingResponse(current, {
-            success: true,
-            trackingActive: true,
-            reason: null,
-            location,
-          })
-        );
-        setError("");
-      },
-      () => {
-        setTracking((current) => ({
-          ...(current ?? {}),
-          success: true,
-          trackingActive: false,
-          reason: "waiting_for_location",
-          location: null,
-        }));
-      }
-    );
-  }, [bookingId, shouldPoll, terminal]);
-
   const loadLocation = useCallback(async () => {
     if (
       !bookingId ||
@@ -292,7 +217,7 @@ export default function BookingLiveTracking({
         );
       }
 
-      setTracking((current) => mergeTrackingResponse(current, data));
+      setTracking(data);
       setError("");
     } catch (requestError: unknown) {
       if (
@@ -335,6 +260,39 @@ export default function BookingLiveTracking({
     terminal,
     shouldPoll,
   ]);
+
+  // Receive immediate GPS events when Socket.IO is available. The existing
+  // REST polling effect below remains active as a resilience fallback.
+  useEffect(() => {
+    if (!bookingId || !shouldPoll || terminal) return;
+
+    return subscribeToBookingTracking(bookingId, {
+      onLocation: (nextLocation) => {
+        setTracking((current) => {
+          const currentTime = current?.location?.capturedAt
+            ? new Date(current.location.capturedAt).getTime()
+            : Number.NEGATIVE_INFINITY;
+          const nextTime = new Date(nextLocation.capturedAt).getTime();
+          if (Number.isFinite(nextTime) && nextTime < currentTime) return current;
+          return {
+            success: true,
+            trackingActive: true,
+            reason: null,
+            location: nextLocation,
+          };
+        });
+        setError("");
+      },
+      onStopped: (reason) => {
+        setTracking({
+          success: true,
+          trackingActive: false,
+          reason: reason === "delivery_finished" ? "delivery_finished" : "sharing_stopped",
+          location: null,
+        });
+      },
+    });
+  }, [bookingId, shouldPoll, terminal]);
 
   // Poll while this delivery is active.
   useEffect(() => {

@@ -8,7 +8,6 @@ import {
   Ban,
   CalendarDays,
   CheckCircle2,
-  CreditCard,
   Clock3,
   MapPin,
   Package,
@@ -25,6 +24,7 @@ import {
 
 import api from "../../services/api";
 import BookingLiveTracking from "../../components/booking/BookingLiveTracking";
+import BookingPaymentAction from "../../components/booking/BookingPaymentAction";
 
 type BookingStatus =
   | "pending"
@@ -51,70 +51,12 @@ interface BookingStatusHistoryEntry {
   createdAt?: string;
 }
 
-interface RazorpaySuccessResponse {
-  razorpay_payment_id: string;
-  razorpay_order_id: string;
-  razorpay_signature: string;
-}
-
-interface RazorpayFailureResponse {
-  error?: { description?: string; reason?: string };
-}
-
-interface RazorpayCheckoutOptions {
-  key: string;
-  amount: number;
-  currency: string;
-  name: string;
-  description: string;
-  order_id: string;
-  prefill?: { name?: string };
-  theme?: { color?: string };
-  handler: (response: RazorpaySuccessResponse) => void | Promise<void>;
-  modal?: { ondismiss?: () => void };
-}
-
-interface RazorpayCheckoutInstance {
-  open: () => void;
-  on: (event: "payment.failed", handler: (response: RazorpayFailureResponse) => void) => void;
-}
-
-declare global {
-  interface Window {
-    Razorpay?: new (options: RazorpayCheckoutOptions) => RazorpayCheckoutInstance;
-  }
-}
-
-let razorpayScriptPromise: Promise<void> | null = null;
-
-function loadRazorpayCheckout(): Promise<void> {
-  if (window.Razorpay) return Promise.resolve();
-  if (razorpayScriptPromise) return razorpayScriptPromise;
-
-  razorpayScriptPromise = new Promise<void>((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.async = true;
-    script.onload = () => {
-      if (window.Razorpay) resolve();
-      else reject(new Error("Razorpay Checkout could not be initialized."));
-    };
-    script.onerror = () => reject(new Error("Unable to load the Razorpay payment window. Check your internet connection and try again."));
-    document.body.appendChild(script);
-  }).catch((error: unknown) => {
-    razorpayScriptPromise = null;
-    throw error;
-  });
-
-  return razorpayScriptPromise;
-}
-
 interface Booking {
   _id: string;
   bookingCode: string;
   status: BookingStatus;
   paymentStatus: string;
-  paymentMethod?: "cash_on_delivery" | "online";
+  paymentMethod?: "online" | "cash_on_delivery";
   createdAt: string;
   updatedAt?: string;
   cancelledAt?: string | null;
@@ -237,9 +179,6 @@ function BookingDetails() {
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState("");
   const [cancelNotice, setCancelNotice] = useState("");
-  const [paymentBusy, setPaymentBusy] = useState(false);
-  const [paymentError, setPaymentError] = useState("");
-  const [paymentNotice, setPaymentNotice] = useState("");
   const requestInProgress = useRef(false);
   const bookingRef = useRef<Booking | null>(null);
 
@@ -320,86 +259,6 @@ function BookingDetails() {
       setCancelling(false);
     }
   }, [id, cancelling, cancellationReason, loadBooking]);
-
-  const startOnlinePayment = useCallback(async () => {
-    if (!booking || !id || paymentBusy) return;
-    if (booking.status !== "delivered" || booking.paymentMethod !== "online") {
-      setPaymentError("Online payment is available only for delivered bookings selected for online payment.");
-      return;
-    }
-    if (booking.paymentStatus === "paid") {
-      setPaymentNotice("This booking has already been paid.");
-      return;
-    }
-
-    setPaymentBusy(true);
-    setPaymentError("");
-    setPaymentNotice("");
-
-    try {
-      const orderResponse = await api.post(`/payments/${id}/order`);
-      const orderData = orderResponse.data;
-      if (!orderData?.success) {
-        throw new Error(orderData?.message || "Unable to start the online payment.");
-      }
-      if (orderData.alreadyPaid) {
-        setPaymentNotice(orderData.message || "This booking has already been paid.");
-        await loadBooking(false);
-        setPaymentBusy(false);
-        return;
-      }
-      if (!orderData?.order?.id || !orderData?.keyId) {
-        throw new Error(orderData?.message || "Unable to start the online payment.");
-      }
-
-      await loadRazorpayCheckout();
-      if (!window.Razorpay) {
-        throw new Error("Razorpay Checkout is unavailable in this browser.");
-      }
-
-      const checkout = new window.Razorpay({
-        key: orderData.keyId,
-        amount: Number(orderData.order.amount),
-        currency: orderData.order.currency || "INR",
-        name: "LogiGo",
-        description: `Payment for ${booking.bookingCode}`,
-        order_id: orderData.order.id,
-        prefill: { name: orderData.customerName || "LogiGo Customer" },
-        theme: { color: "#f97316" },
-        handler: async (paymentResponse) => {
-          setPaymentError("");
-          try {
-            const verification = await api.post(`/payments/${id}/verify`, paymentResponse);
-            if (!verification.data?.success || verification.data?.paymentStatus !== "paid") {
-              throw new Error(verification.data?.message || "Payment could not be confirmed. Refresh the booking and try again.");
-            }
-            setPaymentNotice("Payment received and verified successfully.");
-            await loadBooking(false);
-          } catch (verificationError: unknown) {
-            setPaymentError(getErrorMessage(verificationError));
-            void loadBooking(true);
-          } finally {
-            setPaymentBusy(false);
-          }
-        },
-        modal: {
-          ondismiss: () => {
-            setPaymentBusy(false);
-            setPaymentNotice("Payment window closed. Your booking is still unpaid; you can try again.");
-          },
-        },
-      });
-
-      checkout.on("payment.failed", (failure) => {
-        setPaymentBusy(false);
-        setPaymentError(failure.error?.description || "Payment was not completed. Please try again.");
-      });
-      checkout.open();
-    } catch (paymentStartError: unknown) {
-      setPaymentBusy(false);
-      setPaymentError(getErrorMessage(paymentStartError));
-    }
-  }, [booking, id, paymentBusy, loadBooking]);
 
   useEffect(() => {
     void loadBooking(false);
@@ -537,44 +396,17 @@ function BookingDetails() {
           </div>
         </section>
 
-        {booking.status === "delivered" && booking.paymentMethod === "online" && (
-          <section className="mt-6 rounded-3xl border border-orange-200 bg-white p-5 shadow-sm sm:p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex min-w-0 items-start gap-3">
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-orange-600">
-                  {booking.paymentStatus === "paid" ? <CheckCircle2 className="h-5 w-5" /> : <CreditCard className="h-5 w-5" />}
-                </span>
-                <div className="min-w-0">
-                  <h2 className="text-lg font-black tracking-tight text-slate-900">Online payment</h2>
-                  <p className="mt-1 text-sm leading-6 text-slate-500">
-                    {booking.paymentStatus === "paid"
-                      ? "Your payment has been recorded successfully."
-                      : "Your delivery is complete. Pay the final amount securely using Razorpay."}
-                  </p>
-                </div>
-              </div>
-              {booking.paymentStatus === "paid" ? (
-                <span className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-extrabold text-emerald-700">
-                  <CheckCircle2 className="h-4 w-4" /> Paid
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => void startOnlinePayment()}
-                  disabled={paymentBusy}
-                  className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 py-3 text-sm font-extrabold text-white shadow-lg shadow-orange-500/15 transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <CreditCard className="h-4 w-4" />
-                  {paymentBusy ? "Opening secure checkout…" : "Pay now"}
-                </button>
-              )}
-            </div>
-            {paymentError && <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm leading-5 text-rose-800">{paymentError}</p>}
-            {paymentNotice && <p role="status" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm leading-5 text-emerald-800">{paymentNotice}</p>}
-            <p className="mt-3 text-xs leading-5 text-slate-400">Final payable amount: {formatPrice(booking.fare.finalFare ?? booking.fare.estimatedFare)}. LogiGo confirms payment only after the gateway reports the transaction as captured.</p>
-          </section>
+        {booking.status === "delivered" && booking.paymentMethod === "online" && booking.paymentStatus !== "paid" && (
+          <BookingPaymentAction
+            bookingId={booking._id}
+            bookingCode={booking.bookingCode}
+            paymentMethod={booking.paymentMethod}
+            paymentStatus={booking.paymentStatus}
+            amount={booking.fare.finalFare ?? booking.fare.estimatedFare}
+            customerName={typeof booking.customer === "object" && booking.customer ? booking.customer.name : undefined}
+            onPaid={() => loadBooking(false)}
+          />
         )}
-
         <BookingLiveTracking bookingId={booking._id} status={booking.status} />
 
         {/* Route card */}

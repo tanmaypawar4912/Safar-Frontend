@@ -20,6 +20,7 @@ import CustomerComplaints from "./pages/customer/CustomerComplaints";
 
 import DriverDashboard from "./pages/driver/DriverDashboard";
 import DriverProfile from "./pages/driver/DriverProfile";
+import DriverOnboarding from "./pages/driver/DriverOnboarding";
 import DriverVerification from "./pages/driver/DriverVerification";
 import DriverJobs from "./pages/driver/DriverJobs";
 import DriverVehicleDetails from "./pages/driver/DriverVehicleDetails";
@@ -41,6 +42,9 @@ import AdminReviews from "./pages/admin/AdminReviews";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminEnterpriseEnquiries from "./pages/admin/AdminEnterpriseEnquiries";
 import AdminPayments from "./pages/admin/AdminPayments";
+import AdminDriverEarnings from "./pages/admin/AdminDriverEarnings";
+import AdminSettlements from "./pages/admin/AdminSettlements";
+import AdminFinancialLedger from "./pages/admin/AdminFinancialLedger";
 
 import ProtectedRoute from "./routes/ProtectedRoute";
 import DashboardLayout from "./components/layout/DashboardLayout";
@@ -118,6 +122,10 @@ function App() {
         element={<WorkspaceRoute role="driver"><DriverJobs /></WorkspaceRoute>}
       />
       <Route
+        path="/driver/onboarding"
+        element={<WorkspaceRoute role="driver"><DriverOnboarding /></WorkspaceRoute>}
+      />
+      <Route
         path="/driver/profile"
         element={<WorkspaceRoute role="driver"><DriverProfile /></WorkspaceRoute>}
       />
@@ -180,10 +188,6 @@ function App() {
         element={<WorkspaceRoute role="admin"><AdminPricing /></WorkspaceRoute>}
       />
       <Route
-        path="/admin/payments"
-        element={<WorkspaceRoute role="admin"><AdminPayments /></WorkspaceRoute>}
-      />
-      <Route
         path="/admin/complaints"
         element={<WorkspaceRoute role="admin"><AdminComplaints /></WorkspaceRoute>}
       />
@@ -198,6 +202,22 @@ function App() {
       <Route
         path="/admin/enterprise-enquiries"
         element={<WorkspaceRoute role="admin"><AdminEnterpriseEnquiries /></WorkspaceRoute>}
+      />
+      <Route
+        path="/admin/payments"
+        element={<WorkspaceRoute role="admin"><AdminPayments /></WorkspaceRoute>}
+      />
+      <Route
+        path="/admin/driver-earnings"
+        element={<WorkspaceRoute role="admin"><AdminDriverEarnings /></WorkspaceRoute>}
+      />
+      <Route
+        path="/admin/settlements"
+        element={<WorkspaceRoute role="admin"><AdminSettlements /></WorkspaceRoute>}
+      />
+      <Route
+        path="/admin/financial-ledger"
+        element={<WorkspaceRoute role="admin"><AdminFinancialLedger /></WorkspaceRoute>}
       />
 
       {/* Fallback */}

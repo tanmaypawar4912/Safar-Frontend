@@ -1,3 +1,4 @@
+
 import { useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import {
@@ -22,6 +23,8 @@ import {
   UserRound,
   Users,
   Wallet,
+  CreditCard,
+  Receipt,
   X,
 } from "lucide-react";
 import LogiGoLogo from "../brand/LogiGoLogo";
@@ -50,7 +53,7 @@ const navigation: Record<WorkspaceRole, SidebarItem[]> = {
     { label: "My Jobs", to: "/driver/jobs", icon: ClipboardList, hint: "Assigned deliveries" },
     { label: "My Profile", to: "/driver/profile", icon: UserRound },
     { label: "Completed", to: "/driver/completed", icon: Package },
-    { label: "Earnings", to: "/driver/earnings", icon: Wallet, hint: "Earnings and daily settlements" },
+    { label: "Earnings", to: "/driver/earnings", icon: Wallet, hint: "Earnings and settlements" },
     { label: "Reviews", to: "/driver/reviews", icon: Star },
     { label: "My Vehicles", to: "/driver/vehicles", icon: Truck },
     { label: "Documents", to: "/driver/documents", icon: FileText },
@@ -64,7 +67,10 @@ const navigation: Record<WorkspaceRole, SidebarItem[]> = {
     { label: "Driver activity", to: "/admin/driver-activity", icon: Activity },
     { label: "Vehicle types", to: "/admin/vehicles", icon: Boxes },
     { label: "Pricing", to: "/admin/pricing", icon: CircleDollarSign },
-    { label: "Payments", to: "/admin/payments", icon: CircleDollarSign },
+    { label: "Payments & COD", to: "/admin/payments", icon: CreditCard },
+    { label: "Driver earnings", to: "/admin/driver-earnings", icon: Wallet },
+    { label: "Driver settlements", to: "/admin/settlements", icon: Receipt },
+    { label: "Financial ledger", to: "/admin/financial-ledger", icon: FileText },
     { label: "Complaints", to: "/admin/complaints", icon: MessageSquareWarning },
     { label: "Reviews", to: "/admin/reviews", icon: Star },
     { label: "Settings", to: "/admin/settings", icon: Settings },
@@ -123,20 +129,33 @@ export default function DashboardLayout({
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [desktopSidebarExpanded, setDesktopSidebarExpanded] = useState(false);
   const [avatarFailed, setAvatarFailed] = useState(false);
 
   const items = navigation[role];
   const workspace = workspaceText[role];
+
   const currentItem =
     [...items]
       .filter((item) => isActiveItem(item.to, location.pathname, role))
       .sort((a, b) => b.to.length - a.to.length)[0] ?? items[0];
+
   const displayName =
     user?.name ||
-    (role === "driver" ? "Driver account" : role === "admin" ? "Administrator" : "Customer account");
-  const roleLabel = role === "admin" ? "Administrator" : role === "driver" ? "Delivery partner" : "Customer";
+    (role === "driver"
+      ? "Driver account"
+      : role === "admin"
+        ? "Administrator"
+        : "Customer account");
+
+  const roleLabel =
+    role === "admin"
+      ? "Administrator"
+      : role === "driver"
+        ? "Delivery partner"
+        : "Customer";
 
   async function handleLogout() {
     try {
@@ -166,22 +185,45 @@ export default function DashboardLayout({
 
   const avatar =
     user?.profileImage && !avatarFailed ? (
-      <img src={user.profileImage} alt="" onError={() => setAvatarFailed(true)} />
+      <img
+        src={user.profileImage}
+        alt=""
+        onError={() => setAvatarFailed(true)}
+      />
     ) : (
       <span>{initials(user?.name)}</span>
     );
 
   return (
-    <div className={`lg-workspace-shell lgs-shell${desktopSidebarExpanded ? " is-sidebar-expanded" : ""}`}>
+    <div
+      className={`lg-workspace-shell lgs-shell${
+        desktopSidebarExpanded
+          ? " is-sidebar-expanded"
+          : " is-sidebar-collapsed"
+      }`}
+    >
       <aside
         className="lgs"
         aria-label={`${workspace.title} sidebar`}
         onMouseEnter={() => setDesktopSidebarExpanded(true)}
-        onMouseLeave={() => setDesktopSidebarExpanded(false)}
+        onMouseLeave={(event) => {
+          const activeElement = document.activeElement;
+
+          if (
+            !(activeElement instanceof Node) ||
+            !event.currentTarget.contains(activeElement)
+          ) {
+            setDesktopSidebarExpanded(false);
+          }
+        }}
         onFocusCapture={() => setDesktopSidebarExpanded(true)}
         onBlurCapture={(event) => {
           const nextTarget = event.relatedTarget;
-          if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
+
+          if (
+            !(nextTarget instanceof Node) ||
+            !event.currentTarget.contains(nextTarget)
+          ) {
             setDesktopSidebarExpanded(false);
           }
         }}
@@ -191,7 +233,10 @@ export default function DashboardLayout({
           <span className="lgs-role">{workspace.title}</span>
         </div>
 
-        <nav className="lgs-nav" aria-label={`${workspace.title} navigation`}>
+        <nav
+          className="lgs-nav"
+          aria-label={`${workspace.title} navigation`}
+        >
           {items.map((item) => renderNavItem(item))}
         </nav>
 
@@ -200,7 +245,12 @@ export default function DashboardLayout({
             <ArrowUpRight aria-hidden="true" />
             <span>Public site</span>
           </Link>
-          <button type="button" onClick={() => void handleLogout()} className="lgs-link lgs-logout">
+
+          <button
+            type="button"
+            onClick={() => void handleLogout()}
+            className="lgs-link lgs-logout"
+          >
             <LogOut aria-hidden="true" />
             <span>Logout</span>
           </button>
@@ -210,30 +260,46 @@ export default function DashboardLayout({
       <div className="lg-workspace-main lgs-main">
         <header className="lgt">
           <div className="lgt-crumb" aria-label="Current page">
-            <LogiGoLogo to={`/${role}`} tone="dark" size="sm" className="lgt-mobile-logo" />
+            <LogiGoLogo
+              to={`/${role}`}
+              tone="dark"
+              size="sm"
+              className="lgt-mobile-logo"
+            />
+
             <span className="lgt-crumb-path">
               {workspace.title}
               <ChevronRight size={13} aria-hidden="true" />
               <strong>{currentItem?.label ?? workspace.title}</strong>
             </span>
           </div>
+
           <div className="lgt-user">
             <span className="lgt-user-copy">
               <strong>{displayName}</strong>
               <small>{roleLabel}</small>
             </span>
+
             <span className="lgt-avatar" title={user?.email || displayName}>
               {avatar}
             </span>
           </div>
         </header>
-        <div className="lg-workspace-content lgs-content">{children}</div>
+
+        <div className="lg-workspace-content lgs-content">
+          {children}
+        </div>
       </div>
 
-      <nav className="lg-workspace-mobile-nav lgm" aria-label="Mobile workspace navigation">
+      <nav
+        className="lg-workspace-mobile-nav lgm"
+        aria-label="Mobile workspace navigation"
+      >
         <div className="lgm-grid">
           {mobilePrimary[role].map((to, index) => {
-            const item = items.find((candidate) => candidate.to === to) ?? items[0];
+            const item =
+              items.find((candidate) => candidate.to === to) ?? items[0];
+
             const Icon = item.icon;
             const active = isActiveItem(to, location.pathname, role);
 
@@ -254,10 +320,16 @@ export default function DashboardLayout({
             type="button"
             onClick={() => setMobileMenuOpen((open) => !open)}
             aria-expanded={mobileMenuOpen}
-            aria-label={mobileMenuOpen ? "Close menu" : "Open more navigation"}
+            aria-label={
+              mobileMenuOpen ? "Close menu" : "Open more navigation"
+            }
             className={`lgm-item${mobileMenuOpen ? " is-active" : ""}`}
           >
-            {mobileMenuOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
+            {mobileMenuOpen ? (
+              <X aria-hidden="true" />
+            ) : (
+              <Menu aria-hidden="true" />
+            )}
             <span>More</span>
           </button>
         </div>
@@ -271,18 +343,35 @@ export default function DashboardLayout({
             onClick={() => setMobileMenuOpen(false)}
             className="lgm-backdrop"
           />
-          <section className="lgm-sheet" aria-label="More workspace links">
+
+          <section
+            className="lgm-sheet"
+            aria-label="More workspace links"
+          >
             <div className="lgm-sheet-head">
               <div>
                 <p>{workspace.title} workspace</p>
                 <small>{workspace.subtitle}</small>
               </div>
-              <button type="button" onClick={() => setMobileMenuOpen(false)} aria-label="Close menu">
+
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(false)}
+                aria-label="Close menu"
+              >
                 <ChevronDown aria-hidden="true" />
               </button>
             </div>
-            <div className="lgm-sheet-links">{items.map((item) => renderNavItem(item))}</div>
-            <button type="button" onClick={() => void handleLogout()} className="lgs-link lgs-logout lgm-logout">
+
+            <div className="lgm-sheet-links">
+              {items.map((item) => renderNavItem(item))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void handleLogout()}
+              className="lgs-link lgs-logout lgm-logout"
+            >
               <LogOut aria-hidden="true" />
               <span>Logout</span>
             </button>
