@@ -50,6 +50,7 @@ const navigation: Record<WorkspaceRole, SidebarItem[]> = {
     { label: "My Jobs", to: "/driver/jobs", icon: ClipboardList, hint: "Assigned deliveries" },
     { label: "My Profile", to: "/driver/profile", icon: UserRound },
     { label: "Completed", to: "/driver/completed", icon: Package },
+    { label: "Earnings", to: "/driver/earnings", icon: CircleDollarSign },
     { label: "Reviews", to: "/driver/reviews", icon: Star },
     { label: "My Vehicles", to: "/driver/vehicles", icon: Truck },
     { label: "Documents", to: "/driver/documents", icon: FileText },
@@ -63,6 +64,7 @@ const navigation: Record<WorkspaceRole, SidebarItem[]> = {
     { label: "Driver activity", to: "/admin/driver-activity", icon: Activity },
     { label: "Vehicle types", to: "/admin/vehicles", icon: Boxes },
     { label: "Pricing", to: "/admin/pricing", icon: CircleDollarSign },
+    { label: "Payments", to: "/admin/payments", icon: CircleDollarSign, hint: "COD and online collections" },
     { label: "Complaints", to: "/admin/complaints", icon: MessageSquareWarning },
     { label: "Reviews", to: "/admin/reviews", icon: Star },
     { label: "Settings", to: "/admin/settings", icon: Settings },
@@ -101,7 +103,7 @@ function isActiveItem(
 
 function initials(name?: string | null) {
   return (
-    (name || "Safar User")
+    (name || "LogiGo User")
       .trim()
       .split(/\s+/)
       .filter(Boolean)

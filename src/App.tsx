@@ -4,7 +4,6 @@ import { Route, Routes } from "react-router";
 import Home from "./pages/public/Home";
 import PublicBooking from "./pages/public/PublicBooking";
 import Business from "./pages/public/Business";
-import PolicyPage from "./pages/public/PolicyPage";
 
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
@@ -28,6 +27,7 @@ import DriverVehicleDetails from "./pages/driver/DriverVehicleDetails";
 import DriverDocuments from "./pages/driver/DriverDocuments";
 import DriverReviews from "./pages/driver/DriverReviews";
 import DriverCompleted from "./pages/driver/DriverCompleted";
+import DriverEarning from "./pages/driver/DriverEarning";
 
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminDriverApprovals from "./pages/admin/AdminDriverApprovals";
@@ -40,6 +40,7 @@ import AdminPricing from "./pages/admin/AdminPricing";
 import AdminComplaints from "./pages/admin/AdminComplaints";
 import AdminReviews from "./pages/admin/AdminReviews";
 import AdminSettings from "./pages/admin/AdminSettings";
+import AdminPayments from "./pages/admin/AdminPayments";
 import AdminEnterpriseEnquiries from "./pages/admin/AdminEnterpriseEnquiries";
 
 import ProtectedRoute from "./routes/ProtectedRoute";
@@ -71,9 +72,6 @@ function App() {
       <Route path="/" element={<Home />} />
       <Route path="/book" element={<PublicBooking />} />
       <Route path="/business" element={<Business />} />
-      <Route path="/disclaimer" element={<PolicyPage policy="disclaimer" />} />
-      <Route path="/privacy-policy" element={<PolicyPage policy="privacy" />} />
-      <Route path="/terms-and-conditions" element={<PolicyPage policy="terms" />} />
 
       {/* Authentication routes */}
       <Route path="/login" element={<Login />} />
@@ -141,6 +139,10 @@ function App() {
         element={<WorkspaceRoute role="driver"><DriverCompleted /></WorkspaceRoute>}
       />
       <Route
+        path="/driver/earnings"
+        element={<WorkspaceRoute role="driver"><DriverEarning /></WorkspaceRoute>}
+      />
+      <Route
         path="/driver/vehicles"
         element={<WorkspaceRoute role="driver"><DriverVehicleDetails /></WorkspaceRoute>}
       />
@@ -193,6 +195,10 @@ function App() {
       <Route
         path="/admin/settings"
         element={<WorkspaceRoute role="admin"><AdminSettings /></WorkspaceRoute>}
+      />
+      <Route
+        path="/admin/payments"
+        element={<WorkspaceRoute role="admin"><AdminPayments /></WorkspaceRoute>}
       />
       <Route
         path="/admin/enterprise-enquiries"
