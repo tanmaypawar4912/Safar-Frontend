@@ -180,7 +180,7 @@ function getErrorMessage(error: unknown, fallback: string): string {
     return (
       data?.message ||
       (error.code === "ERR_NETWORK"
-        ? "Could not connect to LogiGo. Check that the backend server is running."
+        ? "Could not connect to Safar. Check that the backend server is running."
         : fallback)
     );
   }
@@ -648,7 +648,7 @@ function DriverProfile() {
     }
 
     if (!form.vehicleType) {
-      return "Select a vehicle type from the active LogiGo vehicle catalogue.";
+      return "Select a vehicle type from the active Safar vehicle catalogue.";
     }
     if (form.vehicleMakeModel.trim().length < 2) {
       return "Enter your vehicle make and model.";
@@ -779,12 +779,10 @@ function DriverProfile() {
       <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl">
         <div className="mx-auto flex h-[70px] max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
           <Link to="/driver" className="flex min-w-0 items-center gap-3">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500 text-white shadow-lg shadow-orange-500/20">
-              <Truck className="h-5 w-5" />
-            </span>
+            <img src="/images/safar-mark.png" alt="" width={102} height={120} className="h-9 w-auto shrink-0" />
             <span>
               <span className="block text-lg font-black tracking-tight">
-                LogiGo
+                Safar
               </span>
               <span className="block text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400">
                 Driver onboarding
@@ -837,7 +835,7 @@ function DriverProfile() {
                         : profile.approvalStatus === "rejected"
                           ? "Correct your onboarding details here and save again. Initial administrator approval is still required before going online."
                           : profile.approvalStatus === "suspended"
-                            ? "This profile is suspended. Contact the LogiGo administrator."
+                            ? "This profile is suspended. Contact the Safar administrator."
                             : "Your initial onboarding is awaiting administrator approval. You can correct your details while it is pending."}
                     </p>
                   </div>
@@ -1157,7 +1155,7 @@ function DriverProfile() {
                   <div>
                     <h2 className="text-lg font-black">Vehicle photos</h2>
                     <p className="mt-1 text-sm leading-6 text-slate-500">
-                      Upload four clear photos. LogiGo stores these through the
+                      Upload four clear photos. Safar stores these through the
                       existing authenticated media endpoint.
                     </p>
                   </div>
@@ -1249,7 +1247,7 @@ function DriverProfile() {
                   Protect your documents
                 </h2>
                 <p className="mt-1.5 text-sm leading-6 text-blue-900/80">
-                  Document images are uploaded through LogiGo's media endpoint.
+                  Document images are uploaded through Safar's media endpoint.
                   Only upload documents that belong to you and ensure the text
                   and photograph are clear. Vehicle photos must show the actual
                   vehicle from the requested angle.

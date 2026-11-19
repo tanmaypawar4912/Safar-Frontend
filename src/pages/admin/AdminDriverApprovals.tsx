@@ -10,7 +10,7 @@ import api from "../../services/api";
  interface DriverProfile { _id: string; user: DriverUser | null; licenseNumber: string; licenseExpiry: string; vehicleType: string; vehicleMakeModel: string; vehicleRegistration: string; vehicleCapacityKg: number; approvalStatus: ApprovalStatus; availability: "offline" | "online" | "busy"; isActive: boolean; approvedAt?: string | null; createdAt: string; rejectionReason: string; documents?: { licenseDocumentUrl?: string | null; identityDocumentUrl?: string | null; vehicleDocumentUrl?: string | null }; vehiclePhotos?: PhotoSet; profileChangeRequest?: { licenseNumber: string; licenseExpiry: string; documents: { licenseDocumentUrl: string; identityDocumentUrl: string }; reason: string; status: "pending" | "approved" | "rejected"; reviewNote?: string } | null; registeredVehicles?: VehicleItem[]; }
  type Decision = "approve" | "reject";
  const inputClass = "min-h-10 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100";
- function errorMessage(error: unknown, fallback: string) { if (isAxiosError(error)) return error.response?.data?.message || (error.code === "ERR_NETWORK" ? "Cannot connect to LogiGo API. Check that the backend is running." : fallback); return error instanceof Error ? error.message : fallback; }
+ function errorMessage(error: unknown, fallback: string) { if (isAxiosError(error)) return error.response?.data?.message || (error.code === "ERR_NETWORK" ? "Cannot connect to Safar API. Check that the backend is running." : fallback); return error instanceof Error ? error.message : fallback; }
  function fmtDate(value?: string | null) { if (!value) return "Not available"; const date = new Date(value); return Number.isNaN(date.getTime()) ? "Invalid date" : date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }); }
  function secureUrl(value?: string | null) { if (!value) return null; try { const url = new URL(value); return url.protocol === "https:" ? url.href : null; } catch { return null; } }
  function DocLink({ label, url }: { label: string; url?: string | null }) { const href = secureUrl(url); return <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3"><div className="min-w-0"><p className="text-xs font-extrabold">{label}</p><p className={`mt-1 text-[10px] font-bold ${href ? "text-emerald-700" : "text-amber-700"}`}>{href ? "HTTPS link submitted" : "Missing / invalid link"}</p></div>{href && <a href={href} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1.5 text-xs font-extrabold text-orange-700 hover:underline">Open <ExternalLink className="h-3 w-3" /></a>}</div>; }
@@ -63,7 +63,7 @@ export default function AdminDriverApprovals() {
     const note = (reviewNotes[`profile-${driver._id}`] || "").trim();
     if (decision === "reject" && note.length < 3) { setError("Add a short admin note before rejecting a profile change."); return; }
     setBusyId(`profile-${driver._id}`); setError(""); setNotice("");
-    try { const response = await api.patch(`/drivers/admin/profiles/${driver._id}/change-request/review`, { decision, reviewNote: note }); if (!response.data?.success) throw new Error(response.data?.message || "Could not review profile change."); setNotice(response.data.message || `Profile change ${decision}d.`); await loadDrivers(); }
+    try { const response = await api.patch(`/drivers/admin/profiles/${driver._id}/change-request`, { decision, reviewNote: note }); if (!response.data?.success) throw new Error(response.data?.message || "Could not review profile change."); setNotice(response.data.message || `Profile change ${decision}d.`); await loadDrivers(); }
     catch (e: unknown) { setError(errorMessage(e, "Could not review profile change.")); }
     finally { setBusyId(null); }
   }
@@ -73,7 +73,7 @@ export default function AdminDriverApprovals() {
     const note = (reviewNotes[key] || "").trim();
     if (decision === "reject" && note.length < 3) { setError("Add a reason of at least 3 characters before rejecting a vehicle request."); return; }
     setBusyId(key); setError(""); setNotice("");
-    const endpoint = isChange ? `/drivers/admin/profiles/${driver._id}/vehicles/${vehicle._id}/change-request/review` : `/drivers/admin/profiles/${driver._id}/vehicles/${vehicle._id}/review`;
+    const endpoint = isChange ? `/drivers/admin/profiles/${driver._id}/vehicles/${vehicle._id}/change-request` : `/drivers/admin/profiles/${driver._id}/vehicles/${vehicle._id}/review`;
     const payload = isChange ? { decision, reviewNote: note } : { decision, rejectionReason: note };
     try { const response = await api.patch(endpoint, payload); if (!response.data?.success) throw new Error(response.data?.message || "Could not review vehicle request."); setNotice(response.data.message || `Vehicle request ${decision}d.`); await loadDrivers(); }
     catch (e: unknown) { setError(errorMessage(e, "Could not review vehicle request.")); }

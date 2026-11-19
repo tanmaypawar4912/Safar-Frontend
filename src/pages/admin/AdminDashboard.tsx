@@ -121,7 +121,7 @@ function getErrorMessage(error: unknown, fallback: string) {
     return (
       error.response?.data?.message ||
       (error.code === "ERR_NETWORK"
-        ? "Cannot connect to LogiGo API. Check that the backend is running."
+        ? "Cannot connect to Safar API. Check that the backend is running."
         : fallback)
     );
   }
@@ -939,7 +939,7 @@ export default function AdminDashboard() {
         )}
 
         <footer className="flex min-w-0 flex-col justify-between gap-2 border-t border-slate-200 pt-5 text-xs leading-5 text-slate-500 sm:flex-row">
-          <p>LogiGo Operations · Admin workspace</p>
+          <p>Safar Operations · Admin workspace</p>
           <p>
             Showing up to the latest 100 bookings. Total recorded bookings: {totalBookings.toLocaleString("en-IN")}.
           </p>

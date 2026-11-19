@@ -56,7 +56,7 @@ function formatCurrency(value?: number | null) {
 function getErrorMessage(error: unknown, fallback: string) {
   if (isAxiosError(error)) {
     if (error.response?.status === 401) return "Your session may have expired. Please log in again.";
-    return error.response?.data?.message || (error.code === "ERR_NETWORK" ? "Cannot connect to LogiGo. Check that the backend server is running." : fallback);
+    return error.response?.data?.message || (error.code === "ERR_NETWORK" ? "Cannot connect to Safar. Check that the backend server is running." : fallback);
   }
   return error instanceof Error ? error.message : fallback;
 }

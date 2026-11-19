@@ -14,7 +14,7 @@ const EMPTY_PHOTOS: Photos = { front: "", right: "", left: "", back: "" };
 const inputClass = "mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100";
 const labelClass = "block text-sm font-bold text-slate-700";
 function getError(error: unknown, fallback: string) {
-  if (isAxiosError(error)) return error.response?.data?.message || (error.code === "ERR_NETWORK" ? "Cannot connect to LogiGo. Check that the backend is running." : fallback);
+  if (isAxiosError(error)) return error.response?.data?.message || (error.code === "ERR_NETWORK" ? "Cannot connect to Safar. Check that the backend is running." : fallback);
   return error instanceof Error ? error.message : fallback;
 }
 

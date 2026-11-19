@@ -20,7 +20,6 @@ import {
 
   RefreshCw,
 
-  ShieldCheck,
 
   Truck,
 
@@ -158,7 +157,7 @@ function getErrorMessage(error: unknown, fallback: string) {
 
       (error.code === "ERR_NETWORK"
 
-        ? "Cannot connect to LogiGo API. Check that the backend is running."
+        ? "Cannot connect to Safar API. Check that the backend is running."
 
         : fallback)
 
@@ -480,15 +479,11 @@ function AdminDrivers() {
 
           <Link to="/admin" className="flex items-center gap-3">
 
-            <div className="rounded-xl bg-orange-500 p-2.5">
-
-              <ShieldCheck className="h-5 w-5" />
-
-            </div>
+            <img src="/images/safar-mark.png" alt="" width={102} height={120} className="h-9 w-auto shrink-0" />
 
             <div>
 
-              <p className="text-lg font-black">LogiGo</p>
+              <p className="text-lg font-black">Safar</p>
 
               <p className="text-[9px] uppercase tracking-[0.25em] text-slate-500">
 

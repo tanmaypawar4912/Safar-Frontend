@@ -146,7 +146,7 @@ const Login = () => {
 
           <div className="lgl-form-wrap">
             {/* Logo stays at the top. No back button here. */}
-            <LogiGoLogo to="/" tone="dark" size="lg" />
+            <LogiGoLogo to="/" tone="light" size="lg" />
 
             <h1>Welcome Back</h1>
 

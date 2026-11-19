@@ -42,7 +42,7 @@ function errorMessage(error: unknown, fallback: string) {
     return (
       error.response?.data?.message ||
       (error.code === "ERR_NETWORK"
-        ? "Cannot connect to LogiGo. Check that the backend is running."
+        ? "Cannot connect to Safar. Check that the backend is running."
         : fallback)
     );
   }
@@ -190,7 +190,7 @@ function CustomerReviews() {
           <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-20 -z-10 h-64 w-64 rounded-full border border-white/10 sm:h-80 sm:w-80" />
           <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-[0.16em] text-orange-300 sm:text-xs"><Star className="h-3.5 w-3.5" /> Customer workspace</span>
           <h1 className="mt-4 text-[clamp(1.8rem,3vw,2.7rem)] font-black leading-tight tracking-tight">Reviews & feedback</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">Review completed deliveries and see the feedback you have already shared with LogiGo.</p>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">Review completed deliveries and see the feedback you have already shared with Safar.</p>
         </div>
       </section>
       <main className="mx-auto grid w-full max-w-6xl gap-6 px-4 py-5 sm:px-6 sm:py-7 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)] lg:gap-8 xl:py-8">

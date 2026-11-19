@@ -187,7 +187,7 @@ function DriverProfilePhoto() {
         </h2>
 
         <p className="mt-1 text-sm leading-6 text-slate-600">
-          {user?.name || "Your LogiGo profile"}
+          {user?.name || "Your Safar profile"}
         </p>
 
         <p className="mt-1 text-xs leading-5 text-slate-500">

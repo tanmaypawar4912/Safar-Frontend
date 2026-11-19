@@ -144,7 +144,7 @@ const Register = () => {
       <h1>Create your account</h1>
 
       <p className="lgl-sub">
-        Choose how you want to use LogiGo. Drivers complete
+        Choose how you want to use Safar. Drivers complete
         licence and vehicle verification after sign-up.
       </p>
 
@@ -205,7 +205,7 @@ const Register = () => {
               <div>
                 <strong>Deliver with us</strong>
                 <small>
-                  Earn by delivering with LogiGo
+                  Earn by delivering with Safar
                 </small>
               </div>
 

@@ -96,7 +96,7 @@ function Business() {
       setError(
         candidate.response?.data?.message ||
           (candidate.message === "Network Error"
-            ? "We could not reach LogiGo right now. Check the API is running and try again."
+            ? "We could not reach Safar right now. Check the API is running and try again."
             : "We could not submit your enquiry. Please review the details and try again.")
       );
     } finally {
@@ -114,7 +114,7 @@ function Business() {
           <div className="pointer-events-none absolute -bottom-44 left-[35%] h-80 w-80 rounded-full bg-orange-500/10 blur-3xl" />
           <div className="relative mx-auto grid max-w-7xl gap-12 px-4 py-14 sm:px-6 sm:py-20 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:px-8 lg:py-24">
             <div>
-              <span className="inline-flex items-center gap-2 rounded-full border border-orange-300/25 bg-orange-400/10 px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.18em] text-orange-200"><Building2 size={14} /> LogiGo for business</span>
+              <span className="inline-flex items-center gap-2 rounded-full border border-orange-300/25 bg-orange-400/10 px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.18em] text-orange-200"><Building2 size={14} /> Safar for business</span>
               <h1 className="mt-6 max-w-2xl text-4xl font-black leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl">Make business deliveries <span className="text-orange-400">simpler.</span></h1>
               <p className="mt-6 max-w-xl text-base leading-7 text-slate-300 sm:text-lg">Tell us how your business moves goods. Share your delivery needs and request a conversation about a logistics setup that fits your operations.</p>
               <div className="mt-8 flex flex-wrap gap-3 text-sm font-semibold text-slate-200">
@@ -146,7 +146,7 @@ function Business() {
           <div className="lg:sticky lg:top-8 lg:self-start">
             <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-orange-600">Business enquiry</p>
             <h2 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">Let’s understand your delivery needs.</h2>
-            <p className="mt-4 leading-7 text-slate-600">Share accurate contact details and a brief about your operations. Your request is stored securely for the LogiGo team to review.</p>
+            <p className="mt-4 leading-7 text-slate-600">Share accurate contact details and a brief about your operations. Your request is stored securely for the Safar team to review.</p>
             <div className="mt-7 space-y-4">
               <div className="flex gap-3"><span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-orange-600"><CheckCircle2 size={18} /></span><div><strong className="text-sm">No account required</strong><p className="mt-1 text-sm leading-5 text-slate-500">You can send an enquiry without creating a business workspace.</p></div></div>
               <div className="flex gap-3"><span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600"><Clock3 size={18} /></span><div><strong className="text-sm">Clear next step</strong><p className="mt-1 text-sm leading-5 text-slate-500">Keep the enquiry reference for future follow-up.</p></div></div>

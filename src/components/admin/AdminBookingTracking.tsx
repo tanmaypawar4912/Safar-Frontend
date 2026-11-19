@@ -16,7 +16,6 @@ import {
 } from "lucide-react";
 
 import api from "../../services/api";
-import { subscribeToBookingTracking } from "../../services/trackingSocket";
 
 type TrackingPoint = {
   latitude: number;
@@ -87,7 +86,7 @@ function errorMessage(error: unknown) {
   return (
     candidate?.response?.data?.message ||
     (candidate?.code === "ERR_NETWORK"
-      ? "Cannot connect to LogiGo API. Check your connection."
+      ? "Cannot connect to Safar API. Check your connection."
       : "Unable to load this booking's location.")
   );
 }
@@ -192,41 +191,6 @@ export default function AdminBookingTracking({
       requestRef.current = null;
     };
   }, [bookingId]);
-
-  // Socket.IO delivers newly accepted GPS points immediately. The REST
-  // polling loop below remains as a fallback for reconnects or blocked sockets.
-  useEffect(() => {
-    if (!bookingId || status === "delivered" || status === "cancelled") return;
-
-    return subscribeToBookingTracking(bookingId, {
-      onLocation: (nextLocation) => {
-        setPayload((current) => {
-          const currentTime = current?.location?.capturedAt
-            ? new Date(current.location.capturedAt).getTime()
-            : Number.NEGATIVE_INFINITY;
-          const nextTime = new Date(nextLocation.capturedAt).getTime();
-          if (Number.isFinite(nextTime) && nextTime < currentTime) return current;
-          return {
-            ...(current || {}),
-            success: true,
-            trackingActive: true,
-            reason: null,
-            location: nextLocation,
-          };
-        });
-        setError("");
-      },
-      onStopped: (reason) => {
-        setPayload((current) => ({
-          ...(current || {}),
-          success: true,
-          trackingActive: false,
-          reason,
-          location: null,
-        }));
-      },
-    });
-  }, [bookingId, status]);
 
   // Fetch the latest location and prevent overlapping requests.
   useEffect(() => {
@@ -539,7 +503,8 @@ export default function AdminBookingTracking({
             </h3>
 
             <p className="mt-1 text-xs leading-5 text-slate-600">
-              Status: {statusLabel(status)} · Live updates with automatic polling fallback.
+              Status: {statusLabel(status)} · Refreshes every 10 seconds
+              while this panel is open.
             </p>
           </div>
         </div>
@@ -707,7 +672,7 @@ export default function AdminBookingTracking({
         <div className="mt-4 flex items-start gap-2 text-[11px] leading-5 text-slate-400">
           <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
           <p>
-            Location is displayed using the existing LogiGo tracking API.
+            Location is displayed using the existing Safar tracking API.
             Access remains subject to backend authorization. Only the
             latest point returned by the server is displayed here.
           </p>

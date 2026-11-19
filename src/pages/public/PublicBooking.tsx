@@ -150,7 +150,7 @@ function getErrorMessage(error: unknown, fallback: string) {
     return (
       error.response?.data?.message ||
       (error.code === "ERR_NETWORK"
-        ? "Cannot connect to LogiGo. Check that the backend is running."
+        ? "Cannot connect to Safar. Check that the backend is running."
         : fallback)
     );
   }
@@ -377,7 +377,7 @@ function PublicBooking() {
           <div className="relative max-w-3xl">
             <span className="inline-flex items-center gap-2 rounded-full border border-orange-300/20 bg-orange-300/10 px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-[0.16em] text-orange-200 sm:text-xs"><span className="h-2 w-2 rounded-full bg-orange-400" /> Public booking</span>
             <h1 className="mt-4 text-[clamp(2rem,5.5vw,3.7rem)] font-black leading-[1.04] tracking-[-0.045em]">Your cargo.<br /><span className="text-orange-400">The right vehicle.</span></h1>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">Enter the route and load, compare real LogiGo vehicle categories, and get a server-calculated estimate before confirming. Driver availability can change before dispatch.</p>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">Enter the route and load, compare real Safar vehicle categories, and get a server-calculated estimate before confirming. Driver availability can change before dispatch.</p>
             <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-xs font-semibold text-slate-300 sm:text-sm">
               <span className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-emerald-300" /> Server-verified fare</span>
               <span className="inline-flex items-center gap-2"><Route className="h-4 w-4 text-orange-300" /> Mapbox route estimate</span>
@@ -434,7 +434,7 @@ function PublicBooking() {
 
                 <div>
                   <div className="flex flex-wrap items-end justify-between gap-3">
-                    <div><h3 className="text-base font-black text-slate-900">Choose a vehicle category</h3><p className="mt-1 text-sm leading-6 text-slate-500">The catalog below comes from your LogiGo backend.</p></div>
+                    <div><h3 className="text-base font-black text-slate-900">Choose a vehicle category</h3><p className="mt-1 text-sm leading-6 text-slate-500">The catalog below comes from your Safar backend.</p></div>
                     {isLoadingVehicles && <span className="text-xs font-semibold text-slate-500">Loading catalog…</span>}
                   </div>
                   {vehicleError && <div role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{vehicleError}</div>}

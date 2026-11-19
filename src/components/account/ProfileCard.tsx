@@ -17,7 +17,7 @@ function messageFromError(error: unknown) {
     return (
       error.response?.data?.message ||
       (error.code === "ERR_NETWORK"
-        ? "Cannot connect to LogiGo. Check that the backend server is running."
+        ? "Cannot connect to Safar. Check that the backend server is running."
         : "Could not update your profile. Please try again.")
     );
   }
@@ -94,7 +94,7 @@ export default function ProfileCard({ accountLabel }: { accountLabel: string }) 
           )}
         </span>
         <div>
-          <h2 id="profile-card-title">{user?.name || "LogiGo user"}</h2>
+          <h2 id="profile-card-title">{user?.name || "Safar user"}</h2>
           <span className="lgp-pill lgp-pill-green"><BadgeCheck aria-hidden="true" /> {accountLabel}</span>
           <p>Member since {formatJoinedDate(user?.createdAt)}</p>
         </div>

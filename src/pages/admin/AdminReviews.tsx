@@ -7,7 +7,6 @@ import {
   MessageSquareText,
   RefreshCw,
   Search,
-  ShieldCheck,
   Star,
   UserRound,
   Truck,
@@ -73,12 +72,12 @@ const getErrorMessage = (error: unknown, fallback: string) => {
     const status = error.response?.status;
     if (status === 401) return "Your session may have expired. Please log in again.";
     if (status === 403) return "You do not have permission to view reviews.";
-    if (status === 404) return "The reviews endpoint was not found. Verify the LogiGo backend review route.";
+    if (status === 404) return "The reviews endpoint was not found. Verify the Safar backend review route.";
     if (status === 429) return "Too many requests. Wait a moment, then refresh.";
     return (
       error.response?.data?.message ||
       (error.code === "ERR_NETWORK"
-        ? "Cannot connect to LogiGo API. Check that the backend is running."
+        ? "Cannot connect to Safar API. Check that the backend is running."
         : fallback)
     );
   }
@@ -114,7 +113,7 @@ function AdminReviews() {
     setError("");
 
     try {
-      // Read-only admin request. Confirm this route exists in the LogiGo backend.
+      // Read-only admin request. Confirm this route exists in the Safar backend.
       const response = await api.get("/reviews/admin");
       if (response.data?.success === false) {
         throw new Error(response.data.message || "Unable to load reviews.");
@@ -185,11 +184,9 @@ function AdminReviews() {
       <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl">
         <div className="mx-auto flex h-[70px] w-full max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
           <Link to="/admin" className="flex min-w-0 items-center gap-3">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500 text-white shadow-lg shadow-orange-500/20">
-              <ShieldCheck className="h-5 w-5" />
-            </span>
+            <img src="/images/safar-mark.png" alt="" width={102} height={120} className="h-9 w-auto shrink-0" />
             <span className="min-w-0">
-              <span className="block text-lg font-black tracking-tight text-slate-900">LogiGo</span>
+              <span className="block text-lg font-black tracking-tight text-slate-900">Safar</span>
               <span className="block text-[9px] font-bold uppercase tracking-[0.22em] text-slate-400">Admin workspace</span>
             </span>
           </Link>
@@ -302,7 +299,7 @@ function AdminReviews() {
         </section>
 
         <aside className="mt-6 rounded-2xl border border-blue-100 bg-blue-50/70 p-4 sm:p-5">
-          <div className="flex items-start gap-3"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" /><div><p className="text-sm font-extrabold text-blue-950">Reviews API connection</p><p className="mt-1 text-sm leading-6 text-blue-900/75">This page currently reads from <code className="rounded bg-white/80 px-1.5 py-0.5 text-xs">GET /reviews/admin</code>. Confirm that this route and its response format are implemented in the LogiGo backend. No review deletion or moderation requests are sent from this page.</p></div></div>
+          <div className="flex items-start gap-3"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" /><div><p className="text-sm font-extrabold text-blue-950">Reviews API connection</p><p className="mt-1 text-sm leading-6 text-blue-900/75">This page currently reads from <code className="rounded bg-white/80 px-1.5 py-0.5 text-xs">GET /reviews/admin</code>. Confirm that this route and its response format are implemented in the Safar backend. No review deletion or moderation requests are sent from this page.</p></div></div>
         </aside>
       </main>
 

@@ -57,7 +57,7 @@ function getError(error: unknown) {
 
     return error.response?.data?.message ||
       (error.code === "ERR_NETWORK"
-        ? "Cannot connect to LogiGo. Check that the backend is running."
+        ? "Cannot connect to Safar. Check that the backend is running."
         : "Unable to load customer reviews.");
   }
 
@@ -68,9 +68,9 @@ function getError(error: unknown) {
 
 function customerName(value: DriverReview["customer"]) {
   if (value && typeof value === "object") {
-    return value.name || "LogiGo customer";
+    return value.name || "Safar customer";
   }
-  return "LogiGo customer";
+  return "Safar customer";
 }
 
 function bookingCode(value: DriverReview["booking"]) {

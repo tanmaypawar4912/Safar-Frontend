@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 
 import api from "../../services/api";
-import { subscribeToBookingTracking } from "../../services/trackingSocket";
 
 type Props = {
   bookingId: string;
@@ -39,7 +38,6 @@ type TrackingResponse = {
     | "delivery_finished"
     | "waiting_for_driver"
     | "waiting_for_location"
-    | "sharing_stopped"
     | null;
 
   location: LiveLocation | null;
@@ -239,7 +237,7 @@ export default function BookingLiveTracking({
       setError(
         request.response?.data?.message ||
           (request.code === "ERR_NETWORK"
-            ? "Cannot connect to LogiGo API. Check your connection."
+            ? "Cannot connect to Safar API. Check your connection."
             : "Live location is temporarily unavailable.")
       );
 
@@ -260,39 +258,6 @@ export default function BookingLiveTracking({
     terminal,
     shouldPoll,
   ]);
-
-  // Receive immediate GPS events when Socket.IO is available. The existing
-  // REST polling effect below remains active as a resilience fallback.
-  useEffect(() => {
-    if (!bookingId || !shouldPoll || terminal) return;
-
-    return subscribeToBookingTracking(bookingId, {
-      onLocation: (nextLocation) => {
-        setTracking((current) => {
-          const currentTime = current?.location?.capturedAt
-            ? new Date(current.location.capturedAt).getTime()
-            : Number.NEGATIVE_INFINITY;
-          const nextTime = new Date(nextLocation.capturedAt).getTime();
-          if (Number.isFinite(nextTime) && nextTime < currentTime) return current;
-          return {
-            success: true,
-            trackingActive: true,
-            reason: null,
-            location: nextLocation,
-          };
-        });
-        setError("");
-      },
-      onStopped: (reason) => {
-        setTracking({
-          success: true,
-          trackingActive: false,
-          reason: reason === "delivery_finished" ? "delivery_finished" : "sharing_stopped",
-          location: null,
-        });
-      },
-    });
-  }, [bookingId, shouldPoll, terminal]);
 
   // Poll while this delivery is active.
   useEffect(() => {

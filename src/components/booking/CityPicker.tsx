@@ -86,7 +86,7 @@ function CityPicker({ city, onChange, compact = false, className = "" }: CityPic
             <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-5 sm:px-7 sm:py-6">
               <div>
                 <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-orange-50 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.16em] text-orange-700">
-                  <MapPin className="h-3.5 w-3.5" /> LogiGo locations
+                  <MapPin className="h-3.5 w-3.5" /> Safar locations
                 </div>
                 <h2 id={dialogTitleId} className="text-xl font-black tracking-tight text-slate-900 sm:text-2xl">Choose your city</h2>
                 <p className="mt-1.5 max-w-2xl text-sm leading-6 text-slate-500">Pick a city to personalize location suggestions. Pickup and drop-off can still be in different cities.</p>

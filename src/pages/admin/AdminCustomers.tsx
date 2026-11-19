@@ -112,7 +112,7 @@ function getErrorMessage(error: unknown, fallback: string) {
     return (
       error.response?.data?.message ||
       (error.code === "ERR_NETWORK"
-        ? "Cannot connect to LogiGo API. Check that the backend is running."
+        ? "Cannot connect to Safar API. Check that the backend is running."
         : fallback)
     );
   }
@@ -281,11 +281,9 @@ function AdminCustomers() {
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
-            <div className="rounded-2xl bg-orange-500 p-3 text-white shadow-sm shadow-orange-200">
-              <Users className="h-5 w-5" />
-            </div>
+            <img src="/images/safar-mark.png" alt="" width={102} height={120} className="h-9 w-auto shrink-0" />
             <div>
-              <p className="text-sm font-bold text-slate-500">LogiGo Admin</p>
+              <p className="text-sm font-bold text-slate-500">Safar Admin</p>
               <h1 className="text-xl font-black tracking-tight sm:text-2xl">Customer directory</h1>
             </div>
           </div>

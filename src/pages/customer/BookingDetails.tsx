@@ -24,7 +24,6 @@ import {
 
 import api from "../../services/api";
 import BookingLiveTracking from "../../components/booking/BookingLiveTracking";
-import BookingPaymentAction from "../../components/booking/BookingPaymentAction";
 
 type BookingStatus =
   | "pending"
@@ -56,7 +55,6 @@ interface Booking {
   bookingCode: string;
   status: BookingStatus;
   paymentStatus: string;
-  paymentMethod?: "online" | "cash_on_delivery";
   createdAt: string;
   updatedAt?: string;
   cancelledAt?: string | null;
@@ -142,7 +140,7 @@ function getErrorMessage(error: unknown) {
     if (status === 401) return "Your session may have expired. Please log in again.";
     if (status === 403) return "You do not have permission to view this booking.";
     if (status === 404) return "This booking was not found. Check the booking link and try again.";
-    return error.response?.data?.message || (error.code === "ERR_NETWORK" ? "Cannot connect to LogiGo API. Check that the backend is running." : "Unable to load booking details.");
+    return error.response?.data?.message || (error.code === "ERR_NETWORK" ? "Cannot connect to Safar API. Check that the backend is running." : "Unable to load booking details.");
   }
   return error instanceof Error ? error.message : "Unable to load booking details.";
 }
@@ -396,17 +394,6 @@ function BookingDetails() {
           </div>
         </section>
 
-        {booking.status === "delivered" && booking.paymentMethod === "online" && booking.paymentStatus !== "paid" && (
-          <BookingPaymentAction
-            bookingId={booking._id}
-            bookingCode={booking.bookingCode}
-            paymentMethod={booking.paymentMethod}
-            paymentStatus={booking.paymentStatus}
-            amount={booking.fare.finalFare ?? booking.fare.estimatedFare}
-            customerName={typeof booking.customer === "object" && booking.customer ? booking.customer.name : undefined}
-            onPaid={() => loadBooking(false)}
-          />
-        )}
         <BookingLiveTracking bookingId={booking._id} status={booking.status} />
 
         {/* Route card */}
@@ -450,7 +437,7 @@ function BookingDetails() {
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h2 className="text-xl font-black tracking-tight">Booking updates</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-500">A timestamped record of changes saved by LogiGo.</p>
+              <p className="mt-2 text-sm leading-6 text-slate-500">A timestamped record of changes saved by Safar.</p>
             </div>
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500"><Clock3 className="h-4 w-4" /> Most recent updates below</span>
           </div>

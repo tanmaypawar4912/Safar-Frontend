@@ -53,7 +53,7 @@ function getError(error: unknown): string {
     return (
       error.response?.data?.message ||
       (error.code === "ERR_NETWORK"
-        ? "Cannot connect to LogiGo. Check that the backend is running."
+        ? "Cannot connect to Safar. Check that the backend is running."
         : "Image upload failed. Please try again.")
     );
   }

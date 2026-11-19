@@ -22,9 +22,6 @@ import {
   Truck,
   UserRound,
   Users,
-  Wallet,
-  CreditCard,
-  Receipt,
   X,
 } from "lucide-react";
 import LogiGoLogo from "../brand/LogiGoLogo";
@@ -53,7 +50,6 @@ const navigation: Record<WorkspaceRole, SidebarItem[]> = {
     { label: "My Jobs", to: "/driver/jobs", icon: ClipboardList, hint: "Assigned deliveries" },
     { label: "My Profile", to: "/driver/profile", icon: UserRound },
     { label: "Completed", to: "/driver/completed", icon: Package },
-    { label: "Earnings", to: "/driver/earnings", icon: Wallet, hint: "Earnings and settlements" },
     { label: "Reviews", to: "/driver/reviews", icon: Star },
     { label: "My Vehicles", to: "/driver/vehicles", icon: Truck },
     { label: "Documents", to: "/driver/documents", icon: FileText },
@@ -67,10 +63,6 @@ const navigation: Record<WorkspaceRole, SidebarItem[]> = {
     { label: "Driver activity", to: "/admin/driver-activity", icon: Activity },
     { label: "Vehicle types", to: "/admin/vehicles", icon: Boxes },
     { label: "Pricing", to: "/admin/pricing", icon: CircleDollarSign },
-    { label: "Payments & COD", to: "/admin/payments", icon: CreditCard },
-    { label: "Driver earnings", to: "/admin/driver-earnings", icon: Wallet },
-    { label: "Driver settlements", to: "/admin/settlements", icon: Receipt },
-    { label: "Financial ledger", to: "/admin/financial-ledger", icon: FileText },
     { label: "Complaints", to: "/admin/complaints", icon: MessageSquareWarning },
     { label: "Reviews", to: "/admin/reviews", icon: Star },
     { label: "Settings", to: "/admin/settings", icon: Settings },
@@ -109,7 +101,7 @@ function isActiveItem(
 
 function initials(name?: string | null) {
   return (
-    (name || "LogiGo User")
+    (name || "Safar User")
       .trim()
       .split(/\s+/)
       .filter(Boolean)

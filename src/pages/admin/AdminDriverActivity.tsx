@@ -17,7 +17,7 @@ interface DriverActivityRecord {
 
 const panel = "rounded-2xl border border-slate-200 bg-white shadow-sm";
 function getError(error: unknown) {
-  if (isAxiosError(error)) return error.response?.data?.message || (error.code === "ERR_NETWORK" ? "Cannot connect to LogiGo API. Check that the backend is running." : "Unable to load driver activity.");
+  if (isAxiosError(error)) return error.response?.data?.message || (error.code === "ERR_NETWORK" ? "Cannot connect to Safar API. Check that the backend is running." : "Unable to load driver activity.");
   return error instanceof Error ? error.message : "Unable to load driver activity.";
 }
 function userName(value: ActivityUser | string | null | undefined) {
