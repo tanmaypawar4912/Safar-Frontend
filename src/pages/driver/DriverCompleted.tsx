@@ -54,8 +54,9 @@ interface HistoryEvent {
 }
 
 interface BookingHistoryDetails extends CompletedJob {
-  paymentMethod?: string;
-  paymentStatus?: string;
+  // Reuse the parent's exact payment types to keep API values consistent.
+  paymentMethod?: CompletedJob["paymentMethod"];
+  paymentStatus?: CompletedJob["paymentStatus"];
   statusHistory?: HistoryEvent[];
   financialSnapshot?: {
     calculationStatus?: string;
