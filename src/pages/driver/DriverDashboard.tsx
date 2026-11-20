@@ -444,7 +444,7 @@ export default function DriverDashboard() {
           <ArrowRight aria-hidden="true" />
         </Link>
       </section>
-      <p className="lgp-footnote">Earnings shows the total fare of your completed deliveries (latest 50). It is not a payout statement.</p>
+      <p className="lgp-footnote">Earnings is calculated from the commission-aware financial ledger. It is separate from gross customer fares; payout eligibility and settlements are shown in My Earnings.</p>
     </main>
   );
 }

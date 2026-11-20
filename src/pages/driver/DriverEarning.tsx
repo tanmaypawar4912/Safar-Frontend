@@ -9,6 +9,7 @@ type FinancialSummary = {
   estimatedNetSettlementRupees?: number;
   platformCommissionEarnedRupees?: number;
   codCommissionOutstandingRupees?: number;
+  codCommissionReceivableRupees?: number;
   onlinePaymentsReceivedRupees?: number;
 };
 type Settlement = {
@@ -46,7 +47,23 @@ export default function DriverEarning() {
         api.get("/settlements/driver", { params: { page: 1, limit: 50 } }),
       ]);
       if (!financialResult.data?.success) throw new Error("Unable to load your earnings summary.");
-      setSummary(financialResult.data.summary || {});
+
+      // Keep the main earnings view available even when the optional settlement
+      // summary endpoint is temporarily unavailable.
+      let codCommissionOutstandingRupees = 0;
+      try {
+        const settlementSummaryResult = await api.get("/settlements/driver/summary");
+        codCommissionOutstandingRupees = Number(
+          settlementSummaryResult.data?.summary?.codCommissionOutstandingRupees || 0
+        );
+      } catch {
+        // The accrued and eligible figures are still available from the ledger.
+      }
+
+      setSummary({
+        ...(financialResult.data.summary || {}),
+        codCommissionOutstandingRupees,
+      });
       setSettlements(Array.isArray(settlementResult.data?.settlements) ? settlementResult.data.settlements : []);
     } catch (requestError: unknown) {
       const message = (requestError as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message
