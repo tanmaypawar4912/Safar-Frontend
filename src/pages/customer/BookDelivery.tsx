@@ -89,6 +89,44 @@ interface BookingCreateResponse {
 interface PaymentSettings {
   codMaxDistanceKm?: number;
   onlinePaymentsEnabled?: boolean;
+  razorpayKeyId?: string;
+}
+
+interface BookingCheckoutOrderResponse {
+  success: boolean;
+  message?: string;
+  checkoutIntentId?: string;
+  alreadyCompleted?: boolean;
+  booking?: { _id: string; bookingCode?: string; status: string };
+  keyId?: string;
+  order?: { id: string; amount: number; currency: string };
+  amountRupees?: number;
+}
+
+const RAZORPAY_CHECKOUT_SCRIPT = "https://checkout.razorpay.com/v1/checkout.js";
+let razorpayScriptPromise: Promise<boolean> | null = null;
+
+function loadRazorpayCheckout(): Promise<boolean> {
+  if (window.Razorpay) return Promise.resolve(true);
+  if (razorpayScriptPromise) return razorpayScriptPromise;
+
+  razorpayScriptPromise = new Promise<boolean>((resolve) => {
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${RAZORPAY_CHECKOUT_SCRIPT}"]`);
+    const script = existing || document.createElement("script");
+    const finish = (ready: boolean) => resolve(ready && typeof window.Razorpay === "function");
+    script.addEventListener("load", () => finish(true), { once: true });
+    script.addEventListener("error", () => finish(false), { once: true });
+    if (!existing) {
+      script.src = RAZORPAY_CHECKOUT_SCRIPT;
+      script.async = true;
+      document.body.appendChild(script);
+    } else if (window.Razorpay) {
+      finish(true);
+    }
+  }).finally(() => {
+    if (!window.Razorpay) razorpayScriptPromise = null;
+  });
+  return razorpayScriptPromise;
 }
 
 const formatPrice = (amount: number) =>
@@ -147,6 +185,10 @@ function BookDelivery() {
 
   const [isEstimating, setIsEstimating] = useState(false);
   const [isCreatingBooking, setIsCreatingBooking] = useState(false);
+  const [pendingCheckoutVerification, setPendingCheckoutVerification] = useState<{
+    checkoutIntentId: string;
+    payment: RazorpayCheckoutResponse;
+  } | null>(null);
 
   const [estimate, setEstimate] = useState<FareEstimate | null>(null);
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
@@ -342,13 +384,59 @@ function BookDelivery() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
+  async function retryOnlineCheckoutVerification() {
+    if (!pendingCheckoutVerification || isCreatingBooking) return;
+
+    setIsCreatingBooking(true);
+    setBookingError("");
+
+    try {
+      const verified = await api.post<{
+        success: boolean;
+        message?: string;
+        booking?: { _id: string; bookingCode?: string };
+      }>("/payments/checkout/verify", {
+        checkoutIntentId: pendingCheckoutVerification.checkoutIntentId,
+        razorpay_order_id: pendingCheckoutVerification.payment.razorpay_order_id,
+        razorpay_payment_id: pendingCheckoutVerification.payment.razorpay_payment_id,
+        razorpay_signature: pendingCheckoutVerification.payment.razorpay_signature,
+      });
+
+      if (!verified.data?.success || !verified.data.booking?._id) {
+        throw new Error(
+          verified.data?.message ||
+            "Payment is not verified yet. Your booking has not been placed."
+        );
+      }
+
+      setPendingCheckoutVerification(null);
+      navigate(`/customer/orders/${verified.data.booking._id}`, {
+        state: { bookingCode: verified.data.booking.bookingCode },
+      });
+    } catch (error: unknown) {
+      setBookingError(
+        getErrorMessage(
+          error,
+          "Payment verification is still pending. Do not pay again for this checkout. Retry verification or contact support."
+        )
+      );
+    } finally {
+      setIsCreatingBooking(false);
+    }
+  }
+
   async function handleConfirmBooking() {
-    if (!estimate || !selectedVehicle || isCreatingBooking) {
+    if (!estimate || !selectedVehicle || isCreatingBooking) return;
+
+    if (pendingCheckoutVerification) {
+      setBookingError(
+        "A payment was submitted and still needs verification. Retry verification below; do not start another payment."
+      );
       return;
     }
 
-    // UX validation only. The backend must repeat this check using its
-    // independently calculated route distance.
+    // UX validation only. The backend independently recalculates the route
+    // and enforces the COD distance policy before creating a booking.
     if (
       paymentMethod === "cash_on_delivery" &&
       codMaxDistanceKm !== null &&
@@ -369,45 +457,154 @@ function BookDelivery() {
 
     setIsCreatingBooking(true);
     setBookingError("");
+    let gatewayCheckoutOpened = false;
+
+    const bookingPayload = {
+      pickupAddress: pickup.trim(),
+      dropAddress: drop.trim(),
+      pickupLocationToken: pickupLocationToken || undefined,
+      dropLocationToken: dropLocationToken || undefined,
+      vehicleId: selectedVehicle,
+      weightKg: weight,
+      packageDescription: packageDescription.trim(),
+      specialInstructions: instructions.trim(),
+    };
 
     try {
-      // Never send a client-calculated fare. The backend recalculates
-      // the route, checks COD eligibility and validates the vehicle.
-      const response = await api.post<BookingCreateResponse>(
-        "/bookings",
+      // COD creates a booking directly. The driver records collection after
+      // delivery, and Admin verifies the collection from Admin Payments.
+      if (paymentMethod === "cash_on_delivery") {
+        const response = await api.post<BookingCreateResponse>("/bookings", {
+          ...bookingPayload,
+          paymentMethod: "cash_on_delivery",
+        });
+
+        if (!response.data.success || !response.data.booking?._id) {
+          throw new Error(
+            response.data.message || "Booking could not be created."
+          );
+        }
+
+        navigate(`/customer/orders/${response.data.booking._id}`, {
+          state: { bookingCode: response.data.booking.bookingCode },
+        });
+        return;
+      }
+
+      // Online flow: create a temporary checkout intent first. The backend
+      // creates the actual booking only after Razorpay capture is verified.
+      const checkoutResponse = await api.post<BookingCheckoutOrderResponse>(
+        "/payments/checkout/order",
         {
-          pickupAddress: pickup.trim(),
-          dropAddress: drop.trim(),
-          pickupLocationToken: pickupLocationToken || undefined,
-          dropLocationToken: dropLocationToken || undefined,
-          vehicleId: selectedVehicle,
-          weightKg: weight,
-          packageDescription: packageDescription.trim(),
-          specialInstructions: instructions.trim(),
-          paymentMethod,
+          ...bookingPayload,
+          paymentMethod: "online",
+          idempotencyKey:
+            window.crypto?.randomUUID?.() ||
+            `checkout_${Date.now()}_${Math.random().toString(36).slice(2, 14)}`,
         }
       );
+      const checkout = checkoutResponse.data;
 
-      if (!response.data.success || !response.data.booking?._id) {
+      if (checkout.alreadyCompleted && checkout.booking?._id) {
+        navigate(`/customer/orders/${checkout.booking._id}`, {
+          state: { bookingCode: checkout.booking.bookingCode },
+        });
+        return;
+      }
+
+      if (
+        !checkout.success ||
+        !checkout.checkoutIntentId ||
+        !checkout.keyId ||
+        !checkout.order?.id
+      ) {
         throw new Error(
-          response.data.message || "Booking could not be created."
+          checkout.message || "Secure online checkout could not be started."
         );
       }
 
-      navigate(`/customer/orders/${response.data.booking._id}`, {
-        state: {
-          bookingCode: response.data.booking.bookingCode,
+      const checkoutReady = await loadRazorpayCheckout();
+      if (!checkoutReady || !window.Razorpay) {
+        throw new Error(
+          "Razorpay Checkout could not load. No booking has been placed; check your internet connection and retry."
+        );
+      }
+
+      const checkoutInstance = new window.Razorpay({
+        key: checkout.keyId,
+        amount: checkout.order.amount,
+        currency: checkout.order.currency || "INR",
+        name: "Safar Logistics",
+        description: "Secure delivery booking payment",
+        order_id: checkout.order.id,
+        notes: { checkoutIntentId: checkout.checkoutIntentId },
+        theme: { color: "#a44229" },
+        modal: {
+          ondismiss: () => {
+            setBookingError("");
+            setIsCreatingBooking(false);
+          },
+        },
+        handler: async (payment) => {
+          setPendingCheckoutVerification({
+            checkoutIntentId: checkout.checkoutIntentId!,
+            payment,
+          });
+          setBookingError("");
+
+          try {
+            const verified = await api.post<{
+              success: boolean;
+              message?: string;
+              booking?: { _id: string; bookingCode?: string };
+            }>("/payments/checkout/verify", {
+              checkoutIntentId: checkout.checkoutIntentId,
+              razorpay_order_id: payment.razorpay_order_id,
+              razorpay_payment_id: payment.razorpay_payment_id,
+              razorpay_signature: payment.razorpay_signature,
+            });
+
+            if (!verified.data?.success || !verified.data.booking?._id) {
+              throw new Error(
+                verified.data?.message ||
+                  "Payment was not verified. The booking has not been placed yet."
+              );
+            }
+
+            setPendingCheckoutVerification(null);
+            navigate(`/customer/orders/${verified.data.booking._id}`, {
+              state: { bookingCode: verified.data.booking.bookingCode },
+            });
+          } catch (verificationError: unknown) {
+            setBookingError(
+              getErrorMessage(
+                verificationError,
+                "Payment verification is pending. Do not pay again immediately; retry verification or contact support with your Razorpay payment ID."
+              )
+            );
+          } finally {
+            setIsCreatingBooking(false);
+          }
         },
       });
+
+      checkoutInstance.on("payment.failed", (failure) => {
+        const candidate = failure as { error?: { description?: string } };
+        setBookingError(
+          candidate.error?.description ||
+            "Payment failed. No booking has been placed. Retry online payment or choose COD if eligible."
+        );
+        setIsCreatingBooking(false);
+      });
+
+      checkoutInstance.open();
+      gatewayCheckoutOpened = true;
     } catch (error: unknown) {
       setBookingError(
-        getErrorMessage(
-          error,
-          "Unable to create the booking. Please try again."
-        )
+        getErrorMessage(error, "Unable to continue checkout. Please try again.")
       );
     } finally {
-      setIsCreatingBooking(false);
+      if (!gatewayCheckoutOpened) setIsCreatingBooking(false);
     }
   }
 
@@ -992,8 +1189,8 @@ function BookDelivery() {
                     </h3>
 
                     <p className="mt-1 text-xs leading-5 text-slate-500">
-                      Select how you would like to pay. Payment is due after
-                      delivery is completed.
+                      Choose COD to pay the driver after delivery, or complete
+                      online payment now before your booking is placed.
                     </p>
                   </div>
 
@@ -1063,7 +1260,7 @@ function BookDelivery() {
 
                     <span className="mt-2 block text-xs leading-5 text-slate-500">
                       {onlinePaymentsEnabled
-                        ? "Pay securely after delivery using Razorpay."
+                        ? "Pay now using UPI or another enabled Razorpay method. Your booking is placed only after payment is verified."
                         : "Unavailable until the online payment gateway is configured."}
                     </span>
                   </button>
@@ -1214,7 +1411,28 @@ function BookDelivery() {
                 Gateway not configured
               </span>
             )}
+            {paymentMethod === "online" && onlinePaymentsEnabled && (
+              <span className="mt-1 block text-xs leading-5 text-emerald-700">
+                Payment is required before the booking is placed.
+              </span>
+            )}
           </div>
+
+          {pendingCheckoutVerification && (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+              <p className="text-xs font-semibold leading-5 text-amber-900">
+                Payment was submitted, but verification is still pending. Do not pay again. Retry verification to complete your booking.
+              </p>
+              <button
+                type="button"
+                onClick={() => void retryOnlineCheckoutVerification()}
+                disabled={isCreatingBooking}
+                className="mt-3 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-amber-700 px-3 py-2 text-xs font-extrabold text-white disabled:opacity-60"
+              >
+                {isCreatingBooking ? "Verifying payment…" : "Retry payment verification"}
+              </button>
+            </div>
+          )}
 
           {step < 4 && (
             <button
@@ -1259,7 +1477,7 @@ function BookDelivery() {
             <button
               type="button"
               className="lgp-btn lgp-btn-primary lgp-btn-block"
-              disabled={!canConfirmBooking}
+              disabled={!canConfirmBooking || Boolean(pendingCheckoutVerification)}
               onClick={() => void handleConfirmBooking()}
             >
               {isCreatingBooking ? (
@@ -1268,11 +1486,11 @@ function BookDelivery() {
                     className="lgp-spin"
                     aria-hidden="true"
                   />
-                  Creating booking...
+                  {paymentMethod === "online" ? "Starting secure checkout…" : "Creating COD booking…"}
                 </>
               ) : (
                 <>
-                  Confirm Booking <ArrowRight aria-hidden="true" />
+                  {paymentMethod === "online" ? "Pay & Confirm Booking" : "Confirm COD Booking"} <ArrowRight aria-hidden="true" />
                 </>
               )}
             </button>

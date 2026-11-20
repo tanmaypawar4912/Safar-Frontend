@@ -5,6 +5,7 @@ import {
   ArrowRight,
   CheckCircle2,
   Clock3,
+  CreditCard,
   MapPin,
   Package,
   Route,
@@ -100,6 +101,51 @@ interface BookingCreateResponse {
   booking?: { _id: string; bookingCode?: string; status: string };
 }
 
+type PaymentMethod = "cash_on_delivery" | "online";
+
+interface PaymentSettings {
+  codMaxDistanceKm: number;
+  onlinePaymentsEnabled: boolean;
+  razorpayKeyId?: string;
+}
+
+interface BookingCheckoutOrderResponse {
+  success: boolean;
+  message?: string;
+  checkoutIntentId?: string;
+  alreadyCompleted?: boolean;
+  booking?: { _id: string; bookingCode?: string; status: string };
+  keyId?: string;
+  order?: { id: string; amount: number; currency: string };
+  amountRupees?: number;
+}
+
+const RAZORPAY_CHECKOUT_SCRIPT = "https://checkout.razorpay.com/v1/checkout.js";
+let razorpayScriptPromise: Promise<boolean> | null = null;
+
+function loadRazorpayCheckout(): Promise<boolean> {
+  if (window.Razorpay) return Promise.resolve(true);
+  if (razorpayScriptPromise) return razorpayScriptPromise;
+
+  razorpayScriptPromise = new Promise<boolean>((resolve) => {
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${RAZORPAY_CHECKOUT_SCRIPT}"]`);
+    const script = existing || document.createElement("script");
+    const finish = (ready: boolean) => resolve(ready && typeof window.Razorpay === "function");
+    script.addEventListener("load", () => finish(true), { once: true });
+    script.addEventListener("error", () => finish(false), { once: true });
+    if (!existing) {
+      script.src = RAZORPAY_CHECKOUT_SCRIPT;
+      script.async = true;
+      document.body.appendChild(script);
+    } else if (window.Razorpay) {
+      finish(true);
+    }
+  }).finally(() => {
+    if (!window.Razorpay) razorpayScriptPromise = null;
+  });
+  return razorpayScriptPromise;
+}
+
 const DRAFT_KEY = "logigo.booking-draft.v1";
 
 function readDraft(): BookingDraft | null {
@@ -144,6 +190,10 @@ const formatPrice = (amount: number) =>
     currency: "INR",
     maximumFractionDigits: 2,
   }).format(amount);
+
+function codAllowedForEstimate(estimate: FareEstimate, maxDistanceKm: number): boolean {
+  return Number.isFinite(estimate.route.distanceKm) && estimate.route.distanceKm <= maxDistanceKm;
+}
 
 function getErrorMessage(error: unknown, fallback: string) {
   if (isAxiosError(error)) {
@@ -190,6 +240,16 @@ function PublicBooking() {
   );
   const [isChecking, setIsChecking] = useState(false);
   const [isCreatingBooking, setIsCreatingBooking] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash_on_delivery");
+  const [paymentSettings, setPaymentSettings] = useState<PaymentSettings>({
+    codMaxDistanceKm: 25,
+    onlinePaymentsEnabled: false,
+  });
+  const [paymentSettingsError, setPaymentSettingsError] = useState("");
+  const [pendingCheckoutVerification, setPendingCheckoutVerification] = useState<{
+    checkoutIntentId: string;
+    payment: RazorpayCheckoutResponse;
+  } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -219,6 +279,24 @@ function PublicBooking() {
     };
     // Catalog is intentionally fetched once on page entry.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    api.get<{ success: boolean; settings?: PaymentSettings; message?: string }>("/payments/settings")
+      .then((response) => {
+        if (!active) return;
+        if (response.data?.success && response.data.settings) {
+          setPaymentSettings(response.data.settings);
+          setPaymentSettingsError("");
+        } else {
+          setPaymentSettingsError(response.data?.message || "Payment options could not be loaded.");
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) setPaymentSettingsError(getErrorMessage(error, "Payment options could not be loaded."));
+      });
+    return () => { active = false; };
   }, []);
 
   const selectedVehicle = vehicles.find((vehicle) => vehicle._id === selectedVehicleId);
@@ -308,8 +386,40 @@ function PublicBooking() {
     setIsChecking(false);
   }
 
+  async function retryOnlineCheckoutVerification() {
+    if (!pendingCheckoutVerification || isCreatingBooking) return;
+    setIsCreatingBooking(true);
+    setBookingError("");
+    setNotice("Retrying secure payment verification. No second payment will be started.");
+    try {
+      const verified = await api.post<{ success: boolean; message?: string; booking?: { _id: string; bookingCode?: string } }>("/payments/checkout/verify", {
+        checkoutIntentId: pendingCheckoutVerification.checkoutIntentId,
+        razorpay_order_id: pendingCheckoutVerification.payment.razorpay_order_id,
+        razorpay_payment_id: pendingCheckoutVerification.payment.razorpay_payment_id,
+        razorpay_signature: pendingCheckoutVerification.payment.razorpay_signature,
+      });
+      if (!verified.data?.success || !verified.data.booking?._id) {
+        throw new Error(verified.data?.message || "Payment is not verified yet. Your booking has not been placed.");
+      }
+      setPendingCheckoutVerification(null);
+      clearDraft();
+      navigate(`/customer/orders/${verified.data.booking._id}`, {
+        state: { bookingCode: verified.data.booking.bookingCode },
+      });
+    } catch (verificationError: unknown) {
+      setBookingError(getErrorMessage(verificationError, "Payment verification is still pending. Please retry; do not pay again for the same checkout."));
+      setNotice("");
+    } finally {
+      setIsCreatingBooking(false);
+    }
+  }
+
   async function handleConfirmBooking() {
     if (!estimate || isCreatingBooking || authLoading) return;
+    if (pendingCheckoutVerification) {
+      setBookingError("A payment was submitted and needs verification. Use Retry payment verification below; do not start another payment.");
+      return;
+    }
 
     if (!user) {
       saveDraft(draft);
@@ -322,31 +432,129 @@ function PublicBooking() {
       return;
     }
 
+    const codAllowed = estimate.route.distanceKm <= paymentSettings.codMaxDistanceKm;
+    if (paymentMethod === "cash_on_delivery" && !codAllowed) {
+      setBookingError(`Cash on delivery is available only up to ${paymentSettings.codMaxDistanceKm} km. Choose online payment for this route.`);
+      return;
+    }
+    if (paymentMethod === "online" && !paymentSettings.onlinePaymentsEnabled) {
+      setBookingError("Online payment is currently unavailable. Choose COD if this route is eligible, or contact support.");
+      return;
+    }
+
     setIsCreatingBooking(true);
     setBookingError("");
     setNotice("");
+    let gatewayCheckoutOpened = false;
+
+    const bookingPayload = {
+      pickupAddress: pickupAddress.trim(),
+      dropAddress: dropAddress.trim(),
+      pickupLocationToken: pickupLocationToken || undefined,
+      dropLocationToken: dropLocationToken || undefined,
+      vehicleId: selectedVehicleId,
+      weightKg: parsedWeight,
+      packageDescription: packageDescription.trim(),
+      specialInstructions: specialInstructions.trim(),
+    };
 
     try {
-      // The backend recalculates the fare and validates the selected vehicle before saving.
-      const response = await api.post<BookingCreateResponse>("/bookings", {
-        pickupAddress: pickupAddress.trim(),
-        dropAddress: dropAddress.trim(),
-        pickupLocationToken: pickupLocationToken || undefined,
-        dropLocationToken: dropLocationToken || undefined,
-        vehicleId: selectedVehicleId,
-        weightKg: parsedWeight,
-        packageDescription: packageDescription.trim(),
-        specialInstructions: specialInstructions.trim(),
-      });
+      if (paymentMethod === "cash_on_delivery") {
+        const response = await api.post<BookingCreateResponse>("/bookings", {
+          ...bookingPayload,
+          paymentMethod: "cash_on_delivery",
+        });
 
-      if (!response.data.success || !response.data.booking?._id) {
-        throw new Error(response.data.message || "Booking could not be created.");
+        if (!response.data.success || !response.data.booking?._id) {
+          throw new Error(response.data.message || "Booking could not be created.");
+        }
+
+        clearDraft();
+        navigate(`/customer/orders/${response.data.booking._id}`, {
+          state: { bookingCode: response.data.booking.bookingCode },
+        });
+        return;
       }
 
-      clearDraft();
-      navigate(`/customer/orders/${response.data.booking._id}`, {
-        state: { bookingCode: response.data.booking.bookingCode },
+      // The backend creates a temporary checkout intent, not a booking. A real
+      // booking is created only after Razorpay reports a captured payment and
+      // the backend verifies its signature, order, amount and currency.
+      const checkoutResponse = await api.post<BookingCheckoutOrderResponse>("/payments/checkout/order", {
+        ...bookingPayload,
+        paymentMethod: "online",
+        idempotencyKey: window.crypto?.randomUUID?.() || `checkout_${Date.now()}_${Math.random().toString(36).slice(2, 14)}`,
       });
+      const checkout = checkoutResponse.data;
+      if (checkout.alreadyCompleted && checkout.booking?._id) {
+        clearDraft();
+        navigate(`/customer/orders/${checkout.booking._id}`, {
+          state: { bookingCode: checkout.booking.bookingCode },
+        });
+        return;
+      }
+      if (!checkout.success || !checkout.checkoutIntentId || !checkout.keyId || !checkout.order?.id) {
+        throw new Error(checkout.message || "Secure online checkout could not be started.");
+      }
+
+      const checkoutReady = await loadRazorpayCheckout();
+      if (!checkoutReady || !window.Razorpay) {
+        throw new Error("Razorpay Checkout could not load. No booking has been placed; check your internet connection and retry.");
+      }
+
+      const checkoutInstance = new window.Razorpay({
+        key: checkout.keyId,
+        amount: checkout.order.amount,
+        currency: checkout.order.currency || "INR",
+        name: "LogiGo",
+        description: "Secure delivery booking payment",
+        order_id: checkout.order.id,
+        prefill: {
+          name: user.name || "LogiGo Customer",
+          email: user.email || "",
+        },
+        notes: { checkoutIntentId: checkout.checkoutIntentId },
+        theme: { color: "#f97316" },
+        modal: {
+          ondismiss: () => {
+            setNotice("Checkout closed. No booking has been placed because payment was not verified.");
+            setIsCreatingBooking(false);
+          },
+        },
+        handler: async (payment) => {
+          setPendingCheckoutVerification({ checkoutIntentId: checkout.checkoutIntentId!, payment });
+          try {
+            setBookingError("");
+            setNotice("Payment received by gateway. Verifying payment securely before placing your booking…");
+            const verified = await api.post<{ success: boolean; message?: string; booking?: { _id: string; bookingCode?: string } }>("/payments/checkout/verify", {
+              checkoutIntentId: checkout.checkoutIntentId,
+              razorpay_order_id: payment.razorpay_order_id,
+              razorpay_payment_id: payment.razorpay_payment_id,
+              razorpay_signature: payment.razorpay_signature,
+            });
+            if (!verified.data?.success || !verified.data.booking?._id) {
+              throw new Error(verified.data?.message || "Payment was not verified. The booking has not been placed yet.");
+            }
+            setPendingCheckoutVerification(null);
+            clearDraft();
+            navigate(`/customer/orders/${verified.data.booking._id}`, {
+              state: { bookingCode: verified.data.booking.bookingCode },
+            });
+          } catch (verificationError: unknown) {
+            setBookingError(getErrorMessage(verificationError, "Payment verification is pending. Do not pay again immediately; retry verification or contact support with your Razorpay payment ID."));
+            setNotice("");
+          } finally {
+            setIsCreatingBooking(false);
+          }
+        },
+      });
+      checkoutInstance.on("payment.failed", (failure) => {
+        const candidate = failure as { error?: { description?: string } };
+        setBookingError(candidate.error?.description || "Payment failed. No booking has been placed. You can retry online payment or choose COD if eligible.");
+        setNotice("");
+        setIsCreatingBooking(false);
+      });
+      checkoutInstance.open();
+      gatewayCheckoutOpened = true;
     } catch (error: unknown) {
       if (isAxiosError(error) && error.response?.status === 401) {
         saveDraft(draft);
@@ -355,7 +563,7 @@ function PublicBooking() {
       }
       setBookingError(getErrorMessage(error, "Unable to create the booking. Please try again."));
     } finally {
-      setIsCreatingBooking(false);
+      if (!gatewayCheckoutOpened) setIsCreatingBooking(false);
     }
   }
 
@@ -381,7 +589,7 @@ function PublicBooking() {
             <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-xs font-semibold text-slate-300 sm:text-sm">
               <span className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-emerald-300" /> Server-verified fare</span>
               <span className="inline-flex items-center gap-2"><Route className="h-4 w-4 text-orange-300" /> Mapbox route estimate</span>
-              <span className="inline-flex items-center gap-2"><Wallet className="h-4 w-4 text-sky-300" /> No payment taken here</span>
+              <span className="inline-flex items-center gap-2"><Wallet className="h-4 w-4 text-sky-300" /> Secure online payment or COD</span>
             </div>
           </div>
         </section>
@@ -493,7 +701,7 @@ function PublicBooking() {
                 {estimate && <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
                   <p className="text-xs font-extrabold uppercase tracking-[0.12em] text-emerald-800">Estimated fare</p>
                   <p className="mt-1 text-3xl font-black tracking-tight text-slate-950">{formatPrice(estimate.fare.estimatedFare)}</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-600">Estimate only. The backend recalculates fare when the booking is created.</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">Estimate only. The server recalculates and locks the amount before checkout; an online booking is created only after payment capture is verified.</p>
                   <div className="mt-4 space-y-2 border-t border-emerald-200 pt-3 text-xs">
                     <div className="flex justify-between gap-3"><span className="text-slate-600">Route distance</span><strong>{estimate.route.distanceKm.toLocaleString("en-IN")} km</strong></div>
                     <div className="flex justify-between gap-3"><span className="text-slate-600">Approx. driving time</span><strong>{estimate.route.durationMinutes} min</strong></div>
@@ -510,14 +718,33 @@ function PublicBooking() {
                   {availability.eligibleDriverCount === 0 && <p className="mt-3 text-xs font-semibold leading-5 text-amber-900">You can retry this check, choose another vehicle, or create the booking and let the existing dispatch worker keep retrying. Assignment only happens after a driver accepts.</p>}
                 </div>}
                 {availabilityError && <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">Driver availability could not be verified: {availabilityError} Fare estimate and driver availability are separate checks.</p>}
-                {bookingError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-800">{bookingError}</p>}
+                {estimate && <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div><h3 className="text-sm font-black text-slate-900">Choose payment method</h3><p className="mt-1 text-xs text-slate-500">Your booking is created only after the selected payment rule is satisfied.</p></div>
+                    <span className="text-lg font-black text-slate-900">{formatPrice(estimate.fare.estimatedFare)}</span>
+                  </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${paymentMethod === "cash_on_delivery" ? "border-orange-400 bg-orange-50" : "border-slate-200 bg-white"} ${!codAllowedForEstimate(estimate, paymentSettings.codMaxDistanceKm) ? "cursor-not-allowed opacity-50" : ""}`}>
+                      <input type="radio" name="paymentMethod" value="cash_on_delivery" checked={paymentMethod === "cash_on_delivery"} disabled={!codAllowedForEstimate(estimate, paymentSettings.codMaxDistanceKm)} onChange={() => setPaymentMethod("cash_on_delivery")} className="mt-1 accent-orange-500" />
+                      <span className="min-w-0"><span className="block text-sm font-extrabold text-slate-900">Cash on delivery</span><span className="mt-1 block text-xs leading-5 text-slate-500">Pay the driver in cash after delivery. Available up to {paymentSettings.codMaxDistanceKm} km.</span>{!codAllowedForEstimate(estimate, paymentSettings.codMaxDistanceKm) && <span className="mt-1 block text-xs font-bold text-rose-700">This route exceeds the COD distance limit.</span>}</span>
+                    </label>
+                    <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${paymentMethod === "online" ? "border-orange-400 bg-orange-50" : "border-slate-200 bg-white"} ${!paymentSettings.onlinePaymentsEnabled ? "cursor-not-allowed opacity-50" : ""}`}>
+                      <input type="radio" name="paymentMethod" value="online" checked={paymentMethod === "online"} disabled={!paymentSettings.onlinePaymentsEnabled} onChange={() => setPaymentMethod("online")} className="mt-1 accent-orange-500" />
+                      <span className="min-w-0"><span className="block text-sm font-extrabold text-slate-900">UPI / Razorpay</span><span className="mt-1 block text-xs leading-5 text-slate-500">Pay securely now. The booking will be placed only after gateway capture and server verification.</span>{!paymentSettings.onlinePaymentsEnabled && <span className="mt-1 block text-xs font-bold text-amber-700">Online payment is not configured right now.</span>}</span>
+                    </label>
+                  </div>
+                  {paymentSettingsError && <p role="status" className="mt-3 text-xs text-amber-800">Payment settings could not be refreshed. COD is still checked by the backend before booking.</p>}
+                </section>}
 
-                {estimate && <button type="button" onClick={() => void handleConfirmBooking()} disabled={isCreatingBooking || authLoading} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#10213a] px-4 py-3.5 text-sm font-extrabold text-white transition hover:bg-[#172d4d] disabled:cursor-not-allowed disabled:bg-slate-400">
-                  {isCreatingBooking ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> Creating booking…</> : user?.role === "customer" ? <>Confirm booking <ArrowRight className="h-4 w-4" /></> : user ? <>Customer account required</> : <>Continue to sign in <ArrowRight className="h-4 w-4" /></>}
+                {bookingError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-800">{bookingError}</p>}
+                {pendingCheckoutVerification && <button type="button" onClick={() => void retryOnlineCheckoutVerification()} disabled={isCreatingBooking} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-extrabold text-amber-900 disabled:opacity-50"><CreditCard className="h-4 w-4" />{isCreatingBooking ? "Verifying payment…" : "Retry payment verification"}</button>}
+
+                {estimate && <button type="button" onClick={() => void handleConfirmBooking()} disabled={isCreatingBooking || authLoading || Boolean(pendingCheckoutVerification) || (paymentMethod === "online" && !paymentSettings.onlinePaymentsEnabled) || (paymentMethod === "cash_on_delivery" && estimate.route.distanceKm > paymentSettings.codMaxDistanceKm)} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#10213a] px-4 py-3.5 text-sm font-extrabold text-white transition hover:bg-[#172d4d] disabled:cursor-not-allowed disabled:bg-slate-400">
+                  {isCreatingBooking ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> {paymentMethod === "online" ? "Processing secure payment…" : "Creating booking…"}</> : user?.role === "customer" ? (paymentMethod === "online" ? <>Pay & place booking <CreditCard className="h-4 w-4" /></> : <>Confirm COD booking <ArrowRight className="h-4 w-4" /></>) : user ? <>Customer account required</> : <>Continue to sign in <ArrowRight className="h-4 w-4" /></>}
                 </button>}
                 {!estimate && <p className="text-xs leading-5 text-slate-500">Your estimate and live eligibility check will appear here after you calculate the fare.</p>}
                 {user && user.role !== "customer" && <p className="text-xs leading-5 text-amber-800">You are signed in as {user.role}. A customer account is required to create a delivery booking.</p>}
-                <p className="flex items-start gap-2 text-[11px] leading-5 text-slate-500"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />No payment is taken on this page. A driver is not assigned until an eligible driver explicitly accepts the offer.</p>
+                <p className="flex items-start gap-2 text-[11px] leading-5 text-slate-500"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />Online bookings are placed only after payment is captured and verified. COD bookings are created immediately only when the route is within the admin's COD distance policy.</p>
               </div>
             </section>
             <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><Clock3 className="h-4 w-4" /></span><div><p className="text-sm font-extrabold text-slate-800">Availability can change</p><p className="mt-1 text-xs leading-5 text-slate-500">The check counts approved, document-eligible drivers who are online and have enough capacity. It is not a route-distance guarantee; dispatch verifies eligibility again.</p></div></div>
