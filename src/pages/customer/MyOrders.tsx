@@ -89,7 +89,7 @@ function getErrorMessage(error: unknown) {
   if (isAxiosError(error)) {
     if (error.response?.status === 401) return "Your session may have expired. Please log in again.";
     return error.response?.data?.message || (error.code === "ERR_NETWORK"
-      ? "Could not connect to LogiGo. Check that the backend server is running."
+      ? "Could not connect to Safar. Check that the backend server is running."
       : "Could not load your bookings.");
   }
   return error instanceof Error ? error.message : "Could not load your bookings.";

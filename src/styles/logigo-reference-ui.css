@@ -508,22 +508,23 @@ body { background: var(--lg-bg); font-family: Inter, ui-sans-serif, system-ui, -
 
 /* ───────────── Public pages (Business, public booking) ───────────── */
 .lgx { background: var(--lg-bg) !important; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
-.lgx-header { position: sticky; top: 0; z-index: 50; border-bottom: 1px solid rgb(255 255 255 / 8%); background: rgb(8 14 26 / 92%); backdrop-filter: blur(16px); }
+.lgx-header { position: sticky; top: 0; z-index: 50; border-bottom: 1px solid #ddcfb7; background: #faf5e9f7; backdrop-filter: blur(16px); }
 .lgx-header-inner { display: flex; width: min(1240px, 100% - 32px); height: 68px; margin-inline: auto; align-items: center; gap: 24px; }
 .lgx-nav { display: none; flex: 1; justify-content: center; gap: clamp(18px, 3vw, 38px); }
-.lgx-nav a { color: rgb(255 255 255 / 82%); font-size: 13px; font-weight: 600; text-decoration: none; transition: color .18s; }
-.lgx-nav a:hover { color: var(--lg-orange); }
+.lgx-nav a { color: #494943; font-size: 13px; font-weight: 600; text-decoration: none; transition: color .18s; }
+.lgx-nav a:hover { color: #a83b16; }
 @media (min-width: 900px) { .lgx-nav { display: flex; } }
 .lgx-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 .lgx-btn { display: inline-flex; min-height: 38px; align-items: center; justify-content: center; padding: 0 18px; border: 1px solid transparent; border-radius: 9px; font-size: 13px; font-weight: 700; text-decoration: none; white-space: nowrap; transition: transform .18s, background .18s, border-color .18s; }
+@media (max-width: 400px) { .lgx-header-inner { gap: 8px; } .lgx-actions { gap: 6px; } .lgx-btn { padding-inline: 10px; } }
 .lgx-btn:hover { transform: translateY(-1px); }
-.lgx-btn-outline { border-color: rgb(255 255 255 / 28%) !important; background: rgb(255 255 255 / 5%) !important; color: #fff !important; }
-.lgx-btn-outline:hover { border-color: rgb(255 255 255 / 55%) !important; background: rgb(255 255 255 / 10%) !important; }
-.lgx-btn-primary { background: linear-gradient(180deg, #ff7a26, #ff5a0a); color: #fff; box-shadow: 0 8px 20px rgb(255 90 10 / 28%); }
+.lgx-btn-outline { border-color: #d8d2c7 !important; background: #fffdfa !important; color: #171815 !important; }
+.lgx-btn-outline:hover { border-color: #b4633f !important; background: #ffebe0 !important; }
+.lgx-btn-primary { background: #263e2d; color: #fff; }
 .lgx-hero { isolation: isolate; background-image: linear-gradient(90deg, rgb(6 12 23 / 94%) 0%, rgb(6 12 23 / 72%) 45%, rgb(6 12 23 / 30%) 100%), url("../assets/logigo-hero-scene.webp") !important; background-position: center, 78% center !important; background-size: cover, cover !important; }
-.lgx-footer { margin-top: 0; border-top: 1px solid rgb(255 255 255 / 8%); background: #070d18; }
-.lgx-footer-inner { display: flex; width: min(1240px, 100% - 32px); margin-inline: auto; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; padding: 24px 0; color: rgb(255 255 255 / 55%); font-size: 12px; }
-.lgx-footer-inner a { color: rgb(255 255 255 / 75%); font-weight: 600; text-decoration: none; }
-.lgx-footer-inner a:hover { color: var(--lg-orange); }
+.lgx-footer { margin-top: 0; border-top: 1px solid #ddcfb7; background: #faf5e9; }
+.lgx-footer-inner { display: flex; width: min(1240px, 100% - 32px); margin-inline: auto; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; padding: 24px 0; color: #5b5b53; font-size: 12px; }
+.lgx-footer-inner a { color: #494943; font-weight: 600; text-decoration: none; }
+.lgx-footer-inner a:hover { color: #a83b16; }
 .lgx input:focus, .lgx select:focus, .lgx textarea:focus { border-color: #ff9a5c !important; box-shadow: 0 0 0 4px rgb(255 106 19 / 12%) !important; outline: none; }
 .lgx [class*="bg-orange-500"] { background-image: linear-gradient(180deg, #ff7a26, #ff5a0a); }

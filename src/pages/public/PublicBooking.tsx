@@ -388,8 +388,8 @@ function PublicBooking() {
 
         {notice && <div role="status" className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-900">{notice}</div>}
 
-        <div className="mt-7 grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:gap-8">
-          <div className="min-w-0 space-y-6">
+        <div className="mt-7 grid min-w-0 gap-6 lg:grid-cols-[minmax(280px,360px)_minmax(0,1fr)] lg:items-start lg:gap-8">
+          <div className="order-2 min-w-0 space-y-6 lg:order-2">
             <section className={`${cardClass} p-5 sm:p-7`}>
               <div className="flex items-start gap-3">
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-50 text-orange-600"><MapPin className="h-5 w-5" /></span>
@@ -477,7 +477,7 @@ function PublicBooking() {
             </section>
           </div>
 
-          <aside className="min-w-0 space-y-5 lg:sticky lg:top-6">
+          <aside className="order-1 min-w-0 space-y-5 lg:sticky lg:top-6 lg:order-1">
             <section className={`${cardClass} overflow-hidden`}>
               <div className="border-b border-slate-100 bg-gradient-to-r from-orange-50 to-white p-5 sm:p-6">
                 <div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-500 text-white shadow-md shadow-orange-500/20"><Package className="h-5 w-5" /></span><div><h2 className="text-lg font-black tracking-tight">Booking summary</h2><p className="mt-0.5 text-xs text-slate-500">Review before confirmation</p></div></div>

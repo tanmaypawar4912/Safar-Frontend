@@ -65,7 +65,7 @@ function getErrorMessage(error: unknown, fallback: string) {
     return (
       error.response?.data?.message ||
       (error.code === "ERR_NETWORK"
-        ? "Cannot connect to LogiGo API. Check that the backend is running."
+        ? "Cannot connect to Safar API. Check that the backend is running."
         : fallback)
     );
   }
@@ -184,11 +184,9 @@ function AdminSettings() {
       <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl">
         <div className="mx-auto flex h-[70px] w-full max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
           <Link to="/admin" className="flex min-w-0 items-center gap-3">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500 text-white shadow-lg shadow-orange-500/20">
-              <Settings2 className="h-5 w-5" />
-            </span>
+            <img src="/images/safar-mark.png" alt="" width={102} height={120} className="h-9 w-auto shrink-0" />
             <span className="min-w-0">
-              <span className="block text-lg font-black tracking-tight text-slate-900">LogiGo</span>
+              <span className="block text-lg font-black tracking-tight text-slate-900">Safar</span>
               <span className="block text-[9px] font-bold uppercase tracking-[0.22em] text-slate-400">Admin workspace</span>
             </span>
           </Link>
@@ -207,7 +205,7 @@ function AdminSettings() {
             </p>
             <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">Settings</h1>
             <p className="mt-3 text-sm leading-6 text-slate-500 sm:text-base">
-              Manage your admin preferences, check your account details, and jump directly to LogiGo operations settings.
+              Manage your admin preferences, check your account details, and jump directly to Safar operations settings.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -289,7 +287,7 @@ function AdminSettings() {
               </div>
               <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Authentication</p>
-                <p className="mt-1 text-sm font-semibold text-slate-800">Managed by LogiGo authentication</p>
+                <p className="mt-1 text-sm font-semibold text-slate-800">Managed by Safar authentication</p>
               </div>
             </div>
             {accountError && <p role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{accountError}</p>}
@@ -303,7 +301,7 @@ function AdminSettings() {
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-orange-600">Workspace shortcuts</p>
-              <h2 className="mt-2 text-xl font-extrabold tracking-tight text-slate-900">Manage LogiGo operations</h2>
+              <h2 className="mt-2 text-xl font-extrabold tracking-tight text-slate-900">Manage Safar operations</h2>
               <p className="mt-1 text-sm leading-6 text-slate-500">Open a dedicated admin page to work with current operational records.</p>
             </div>
           </div>
@@ -322,12 +320,12 @@ function AdminSettings() {
           <Info className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
           <div className="min-w-0">
             <p className="text-sm font-extrabold text-amber-950">Settings integration note</p>
-            <p className="mt-1 text-sm leading-6 text-amber-900/80">This page currently saves only the four admin display preferences to this browser. Backend-managed platform settings, password changes, and server-side notification delivery are not added here because the corresponding LogiGo settings endpoints were not confirmed in the supplied project context.</p>
+            <p className="mt-1 text-sm leading-6 text-amber-900/80">This page currently saves only the four admin display preferences to this browser. Backend-managed platform settings, password changes, and server-side notification delivery are not added here because the corresponding Safar settings endpoints were not confirmed in the supplied project context.</p>
           </div>
         </section>
 
         <footer className="mt-7 flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-slate-400">
-          <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5" /> LogiGo Admin Workspace</span>
+          <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5" /> Safar Admin Workspace</span>
           <span>Preferences are stored locally in this browser.</span>
         </footer>
       </main>

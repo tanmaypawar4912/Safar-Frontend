@@ -9,6 +9,7 @@ import "./index.css";
 import "./styles/premium-visual-refresh.css";
 import "./styles/logigo-reference-ui.css";
 import "./styles/dashboard-sidebar-hover.css";
+import "./styles/goa-theme.css";
 
 import { AuthProvider } from "./context/AuthContext";
 

@@ -774,7 +774,7 @@ export default function DriverVehicleDetails() {
             <div>
               <h2 className="text-lg font-black text-blue-950">One driver, one registered vehicle</h2>
               <p className="mt-1 text-sm leading-6 text-blue-900/80">
-                LogiGo supports one registered vehicle per driver. You can edit its category, registration, registration document and photos directly. Saving changes signs you offline until you choose to go online again. New driver profiles must still receive initial administrator approval.
+                Safar supports one registered vehicle per driver. You can edit its category, registration, registration document and photos directly. Saving changes signs you offline until you choose to go online again. New driver profiles must still receive initial administrator approval.
               </p>
             </div>
           </div>

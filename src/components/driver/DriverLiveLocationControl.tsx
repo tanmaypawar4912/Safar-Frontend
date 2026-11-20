@@ -116,6 +116,7 @@ export default function DriverLiveLocationControl({
     useRef<GPSCoordinates | null>(null);
 
   const uploadPromiseRef = useRef<Promise<void> | null>(null);
+  const autoStartAttemptedRef = useRef(false);
 
   const canShare = ACTIVE_STATUSES.has(status);
 
@@ -369,6 +370,23 @@ export default function DriverLiveLocationControl({
     }
   }
 
+  // Start GPS automatically when an accepted/active job appears. The browser
+  // still controls the permission prompt; no coordinates are read or uploaded
+  // unless the driver grants location access. The guard prevents re-prompting
+  // on every delivery-status update while this booking remains mounted.
+  useEffect(() => {
+    if (!canShare || autoStartAttemptedRef.current) return;
+
+    autoStartAttemptedRef.current = true;
+    startSharing();
+
+    // Reset during effect cleanup so React StrictMode can safely replay the
+    // mount effect in development after its simulated cleanup.
+    return () => {
+      autoStartAttemptedRef.current = false;
+    };
+  }, [bookingId, canShare]);
+
   async function stopSharing() {
     if (busy) return;
 
@@ -489,7 +507,11 @@ export default function DriverLiveLocationControl({
                 className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-[#101c30] px-3.5 py-2.5 text-xs font-extrabold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Radio className="h-4 w-4" />
-                {busy ? "Stopping GPS..." : "Start sharing GPS"}
+                {busy
+                  ? "Stopping GPS..."
+                  : autoStartAttemptedRef.current
+                    ? "Retry GPS sharing"
+                    : "Start sharing GPS"}
               </button>
             ) : (
               <button
@@ -516,9 +538,10 @@ export default function DriverLiveLocationControl({
           )}
 
           <p className="mt-3 text-[10px] leading-5 text-slate-500">
-            Location uploads are movement-based (approximately 3 metres)
-            with a 15-second heartbeat when new GPS readings are available.
-            Keep this page open while sharing.
+            GPS permission is requested automatically when an active delivery
+            appears. Sharing starts only after you allow browser location access.
+            Updates are movement-based (approximately 3 metres) with a
+            15-second heartbeat. Keep this page open while sharing.
           </p>
         </div>
       </div>

@@ -429,7 +429,7 @@ export default function DriverJobs() {
 
             <p className="text-xs leading-5 text-slate-500">
               Only one eligible driver receives a booking offer at a time. If that
-              driver declines or the offer expires, LogiGo checks the next eligible
+              driver declines or the offer expires, Safar checks the next eligible
               driver. Offers expire, so respond promptly.
             </p>
 

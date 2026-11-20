@@ -42,7 +42,7 @@ interface DriverOverviewSummary {
   totalReviews: number;
   averageRating: number;
   completedDeliveries: number;
-  completedValue: number;
+  earningsValue: number;
 }
 
 const ACTIVE_STATUSES = [
@@ -88,7 +88,7 @@ export default function DriverDashboard() {
     totalReviews: 0,
     averageRating: 0,
     completedDeliveries: 0,
-    completedValue: 0,
+    earningsValue: 0,
   });
 
   const loadProfile = useCallback(async () => {
@@ -127,13 +127,14 @@ export default function DriverDashboard() {
   const loadOverviewExtras = useCallback(async () => {
     setExtrasLoading(true);
 
-    const [reviewResult, completedResult] = await Promise.allSettled([
+    const [reviewResult, completedResult, financialResult] = await Promise.allSettled([
       api.get("/reviews/driver/mine", {
         params: { page: 1, limit: 1 },
       }),
       api.get("/bookings/driver/completed", {
         params: { page: 1, limit: 50 },
       }),
+      api.get("/financial-ledger/driver/summary"),
     ]);
 
     setOverview((current) => {
@@ -158,14 +159,17 @@ export default function DriverDashboard() {
         next.completedDeliveries = Number(
           completedResult.value.data?.pagination?.total || 0
         );
-        const completedList = completedResult.value.data?.bookings ?? completedResult.value.data?.data?.bookings ?? [];
-        next.completedValue = Array.isArray(completedList)
-          ? completedList.reduce(
-              (sum: number, item: DriverJob) =>
-                sum + Number(item?.fare?.finalFare ?? item?.fare?.estimatedFare ?? 0),
-              0
-            )
-          : 0;
+      }
+
+      // Earnings must come from the commission-aware ledger, not the gross
+      // customer fare total of completed bookings.
+      if (
+        financialResult.status === "fulfilled" &&
+        financialResult.value.data?.success
+      ) {
+        next.earningsValue = Number(
+          financialResult.value.data?.summary?.driverEarningsAccruedRupees || 0
+        );
       }
 
       return next;
@@ -199,7 +203,7 @@ export default function DriverDashboard() {
       { label: "Active Jobs", value: activeJobs.length, icon: Activity, tone: "blue", loading: jobsLoading },
       { label: "Upcoming", value: upcomingJobs.length, icon: Clock3, tone: "orange", loading: jobsLoading },
       { label: "Completed", value: overview.completedDeliveries, icon: CheckCircle2, tone: "green", loading: extrasLoading },
-      { label: "Earnings", value: formatDriverPrice(overview.completedValue), icon: Wallet, tone: "orange", loading: extrasLoading },
+      { label: "Earnings", value: formatDriverPrice(overview.earningsValue), icon: Wallet, tone: "orange", loading: extrasLoading },
     ],
     [activeJobs.length, upcomingJobs.length, overview, jobsLoading, extrasLoading]
   );
@@ -440,7 +444,7 @@ export default function DriverDashboard() {
           <ArrowRight aria-hidden="true" />
         </Link>
       </section>
-      <p className="lgp-footnote">Earnings shows the total fare of your completed deliveries (latest 50). It is not a payout statement.</p>
+      <p className="lgp-footnote">Earnings is calculated from the commission-aware financial ledger. It is separate from gross customer fares; payout eligibility and settlements are shown in My Earnings.</p>
     </main>
   );
 }

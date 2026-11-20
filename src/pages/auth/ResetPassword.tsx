@@ -10,7 +10,7 @@ function resetErrorMessage(error: unknown) {
   if (isAxiosError(error)) {
     return error.response?.data?.message ||
       (error.code === "ERR_NETWORK"
-        ? "Could not connect to LogiGo. Please try again when the service is available."
+        ? "Could not connect to Safar. Please try again when the service is available."
         : "Unable to reset your password. Please try again.");
   }
   return error instanceof Error ? error.message : "Unable to reset your password. Please try again.";
@@ -79,7 +79,7 @@ const ResetPassword = () => {
       ) : (
         <>
           <h1>Set a new password</h1>
-          <p className="lgl-sub">Choose a new password for your LogiGo account. Use 8–128 characters.</p>
+          <p className="lgl-sub">Choose a new password for your Safar account. Use 8–128 characters.</p>
 
           {error && (
             <div role="alert" aria-live="polite" className="lgl-error">

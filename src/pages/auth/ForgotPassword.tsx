@@ -10,7 +10,7 @@ function errorMessage(error: unknown) {
   if (isAxiosError(error)) {
     return error.response?.data?.message ||
       (error.code === "ERR_NETWORK"
-        ? "Could not connect to LogiGo. Please try again when the service is available."
+        ? "Could not connect to Safar. Please try again when the service is available."
         : "Unable to submit your request. Please try again.");
   }
   return error instanceof Error ? error.message : "Unable to submit your request. Please try again.";

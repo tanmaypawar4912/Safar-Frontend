@@ -86,7 +86,7 @@ function errorMessage(error: unknown) {
   return (
     candidate?.response?.data?.message ||
     (candidate?.code === "ERR_NETWORK"
-      ? "Cannot connect to LogiGo API. Check your connection."
+      ? "Cannot connect to Safar API. Check your connection."
       : "Unable to load this booking's location.")
   );
 }
@@ -672,7 +672,7 @@ export default function AdminBookingTracking({
         <div className="mt-4 flex items-start gap-2 text-[11px] leading-5 text-slate-400">
           <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
           <p>
-            Location is displayed using the existing LogiGo tracking API.
+            Location is displayed using the existing Safar tracking API.
             Access remains subject to backend authorization. Only the
             latest point returned by the server is displayed here.
           </p>

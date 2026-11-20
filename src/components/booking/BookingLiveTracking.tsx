@@ -237,7 +237,7 @@ export default function BookingLiveTracking({
       setError(
         request.response?.data?.message ||
           (request.code === "ERR_NETWORK"
-            ? "Cannot connect to LogiGo API. Check your connection."
+            ? "Cannot connect to Safar API. Check your connection."
             : "Live location is temporarily unavailable.")
       );
 
