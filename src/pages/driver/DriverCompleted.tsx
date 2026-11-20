@@ -10,6 +10,8 @@ import {
   ChevronRight,
   Clock3,
   Eye,
+  Banknote,
+  CheckCircle2,
   X,
   PackageCheck,
   RefreshCw,
@@ -33,6 +35,15 @@ interface CompletedJob {
   vehicle?: { name?: string } | string | null;
   customer?: { name?: string } | string | null;
   fare?: { estimatedFare?: number; finalFare?: number | null };
+  paymentMethod?: "online" | "cash_on_delivery";
+  paymentStatus?: string;
+  payment?: {
+    cashCollectedAt?: string | null;
+    paidAt?: string | null;
+    cashCollectedBy?: { name?: string } | string | null;
+    cashCollectionVerifiedAt?: string | null;
+    cashCollectionVerifiedBy?: { name?: string } | string | null;
+  } | null;
 }
 
 interface HistoryEvent {
@@ -130,6 +141,9 @@ export default function DriverCompleted() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
   const [historyBooking, setHistoryBooking] = useState<BookingHistoryDetails | null>(null);
+  const [cashCollectingId, setCashCollectingId] = useState<string | null>(null);
+  const [paymentActionError, setPaymentActionError] = useState("");
+  const [paymentActionNotice, setPaymentActionNotice] = useState("");
 
   const loadJobs = useCallback(
     async (targetPage: number, query: string) => {
@@ -202,6 +216,27 @@ export default function DriverCompleted() {
     setHistoryTargetId(null);
     setHistoryBooking(null);
     setHistoryError("");
+  }
+
+  async function markCodAsCollected(job: CompletedJob) {
+    if (job.paymentMethod !== "cash_on_delivery" || job.paymentStatus === "paid" || cashCollectingId) return;
+    const confirmed = window.confirm(`Confirm that you physically received ${formatMoney(job.fare?.finalFare ?? job.fare?.estimatedFare)} in cash from the customer for ${job.bookingCode || "this delivery"}? Only confirm after receiving the full amount.`);
+    if (!confirmed) return;
+
+    setCashCollectingId(job._id);
+    setPaymentActionError("");
+    setPaymentActionNotice("");
+    try {
+      const response = await api.patch(`/payments/${job._id}/cash-collected`);
+      if (!response.data?.success) throw new Error(response.data?.message || "Cash collection could not be recorded.");
+      setPaymentActionNotice("COD cash collection recorded. Your admin team can now see and verify this collection.");
+      await loadJobs(page, appliedSearch);
+      if (historyTargetId === job._id) await openHistory(job);
+    } catch (actionError: unknown) {
+      setPaymentActionError(getError(actionError));
+    } finally {
+      setCashCollectingId(null);
+    }
   }
 
   function formatStatus(value: string) {
@@ -317,6 +352,9 @@ export default function DriverCompleted() {
           </div>
         )}
 
+        {paymentActionError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{paymentActionError}</div>}
+        {paymentActionNotice && <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{paymentActionNotice}</div>}
+
         {loading ? (
           <div className="space-y-3">
             {[1, 2, 3].map((item) => (
@@ -348,8 +386,8 @@ export default function DriverCompleted() {
         ) : (
           <section aria-label="Completed deliveries" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="flex flex-col gap-1 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5"><h2 className="text-base font-black text-slate-900">Delivery history</h2><span className="text-xs text-slate-500">{pagination.total} completed deliveries</span></div>
-            <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[980px] text-left text-sm"><thead className="bg-slate-50 text-[11px] font-extrabold uppercase tracking-wider text-slate-500"><tr><th scope="col" className="px-5 py-3">Booking</th><th scope="col" className="px-5 py-3">Route</th><th scope="col" className="px-5 py-3">Package</th><th scope="col" className="px-5 py-3">Vehicle / distance</th><th scope="col" className="px-5 py-3">Completed</th><th scope="col" className="px-5 py-3">Fare</th><th scope="col" className="px-5 py-3">Action</th></tr></thead><tbody className="divide-y divide-slate-100">{jobs.map((job) => <tr key={job._id} className="align-top hover:bg-emerald-50/30"><td className="px-5 py-4"><p className="break-all font-extrabold text-slate-900">{job.bookingCode || `Booking ${job._id.slice(-6).toUpperCase()}`}</p><span className="mt-1 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-extrabold text-emerald-700">Delivered</span></td><td className="max-w-[280px] px-5 py-4"><p className="break-words text-xs leading-5"><span className="font-bold text-emerald-700">From:</span> {job.pickup?.address || "Not available"}</p><p className="mt-1 break-words text-xs leading-5"><span className="font-bold text-orange-700">To:</span> {job.drop?.address || "Not available"}</p></td><td className="max-w-[180px] px-5 py-4"><p className="break-words font-bold text-slate-800">{job.package?.description || "Package"}</p><p className="mt-1 text-xs text-slate-500">{job.package?.weightKg ?? "—"} kg</p></td><td className="px-5 py-4"><p className="font-bold text-slate-800">{vehicleName(job.vehicle)}</p><p className="mt-1 text-xs text-slate-500">{typeof job.route?.distanceKm === "number" ? `${job.route.distanceKm.toFixed(1)} km` : "Distance unavailable"}</p></td><td className="whitespace-nowrap px-5 py-4 text-xs text-slate-600">{formatDate(job.updatedAt || job.createdAt)}</td><td className="whitespace-nowrap px-5 py-4 font-black text-slate-900">{formatMoney(job.fare?.finalFare ?? job.fare?.estimatedFare)}</td><td className="whitespace-nowrap px-5 py-4"><button type="button" onClick={() => void openHistory(job)} disabled={historyLoading} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-extrabold text-orange-800 transition hover:bg-orange-100 disabled:cursor-wait disabled:opacity-60"><Eye className="h-4 w-4" />{historyLoading && historyTargetId === job._id ? "Loading…" : "View history"}</button></td></tr>)}</tbody></table></div>
-            <div className="divide-y divide-slate-100 md:hidden">{jobs.map((job) => <article key={job._id} className="min-w-0 p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="break-all text-sm font-black text-slate-900">{job.bookingCode || `Booking ${job._id.slice(-6).toUpperCase()}`}</p><p className="mt-1 text-[11px] text-slate-500">{formatDate(job.updatedAt || job.createdAt)}</p></div><span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-extrabold text-emerald-700">Delivered</span></div><div className="mt-3 space-y-2 rounded-xl bg-slate-50 p-3"><p className="break-words text-xs leading-5"><span className="font-bold text-emerald-700">Pickup:</span> {job.pickup?.address || "Not available"}</p><p className="break-words text-xs leading-5"><span className="font-bold text-orange-700">Drop:</span> {job.drop?.address || "Not available"}</p></div><div className="mt-3 flex items-end justify-between gap-3"><div className="min-w-0"><p className="break-words text-xs font-bold text-slate-800">{job.package?.description || "Package"} · {job.package?.weightKg ?? "—"} kg</p><p className="mt-1 text-[11px] text-slate-500">{vehicleName(job.vehicle)} · {typeof job.route?.distanceKm === "number" ? `${job.route.distanceKm.toFixed(1)} km` : "Distance unavailable"}</p></div><div className="shrink-0 text-right"><p className="text-base font-black text-slate-900">{formatMoney(job.fare?.finalFare ?? job.fare?.estimatedFare)}</p><button type="button" onClick={() => void openHistory(job)} disabled={historyLoading} className="mt-2 inline-flex min-h-9 items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-extrabold text-orange-800 transition hover:bg-orange-100 disabled:cursor-wait disabled:opacity-60"><Eye className="h-4 w-4" />{historyLoading && historyTargetId === job._id ? "Loading…" : "View history"}</button></div></div></article>)}</div>
+            <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[980px] text-left text-sm"><thead className="bg-slate-50 text-[11px] font-extrabold uppercase tracking-wider text-slate-500"><tr><th scope="col" className="px-5 py-3">Booking</th><th scope="col" className="px-5 py-3">Route</th><th scope="col" className="px-5 py-3">Package</th><th scope="col" className="px-5 py-3">Vehicle / distance</th><th scope="col" className="px-5 py-3">Completed</th><th scope="col" className="px-5 py-3">Fare</th><th scope="col" className="px-5 py-3">Action</th></tr></thead><tbody className="divide-y divide-slate-100">{jobs.map((job) => <tr key={job._id} className="align-top hover:bg-emerald-50/30"><td className="px-5 py-4"><p className="break-all font-extrabold text-slate-900">{job.bookingCode || `Booking ${job._id.slice(-6).toUpperCase()}`}</p><span className="mt-1 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-extrabold text-emerald-700">Delivered</span></td><td className="max-w-[280px] px-5 py-4"><p className="break-words text-xs leading-5"><span className="font-bold text-emerald-700">From:</span> {job.pickup?.address || "Not available"}</p><p className="mt-1 break-words text-xs leading-5"><span className="font-bold text-orange-700">To:</span> {job.drop?.address || "Not available"}</p></td><td className="max-w-[180px] px-5 py-4"><p className="break-words font-bold text-slate-800">{job.package?.description || "Package"}</p><p className="mt-1 text-xs text-slate-500">{job.package?.weightKg ?? "—"} kg</p></td><td className="px-5 py-4"><p className="font-bold text-slate-800">{vehicleName(job.vehicle)}</p><p className="mt-1 text-xs text-slate-500">{typeof job.route?.distanceKm === "number" ? `${job.route.distanceKm.toFixed(1)} km` : "Distance unavailable"}</p></td><td className="whitespace-nowrap px-5 py-4 text-xs text-slate-600">{formatDate(job.updatedAt || job.createdAt)}</td><td className="whitespace-nowrap px-5 py-4 font-black text-slate-900">{formatMoney(job.fare?.finalFare ?? job.fare?.estimatedFare)}</td><td className="whitespace-nowrap px-5 py-4"><div className="flex flex-col items-start gap-2"><button type="button" onClick={() => void openHistory(job)} disabled={historyLoading} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-extrabold text-orange-800 transition hover:bg-orange-100 disabled:cursor-wait disabled:opacity-60"><Eye className="h-4 w-4" />{historyLoading && historyTargetId === job._id ? "Loading…" : "View history"}</button>{job.paymentMethod === "cash_on_delivery" && job.paymentStatus !== "paid" ? <button type="button" onClick={() => void markCodAsCollected(job)} disabled={cashCollectingId === job._id} className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-extrabold text-white transition hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-60"><Banknote className="h-4 w-4" />{cashCollectingId === job._id ? "Recording…" : "Mark as collected"}</button> : job.paymentMethod === "cash_on_delivery" ? <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700"><CheckCircle2 className="h-4 w-4" />{job.payment?.cashCollectionVerifiedAt ? "Admin verified" : job.payment?.cashCollectedAt ? "Collected · awaiting admin verification" : "Legacy paid record · contact admin"}</span> : <span className="text-[11px] font-bold text-emerald-700">Online paid</span>}</div></td></tr>)}</tbody></table></div>
+            <div className="divide-y divide-slate-100 md:hidden">{jobs.map((job) => <article key={job._id} className="min-w-0 p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="break-all text-sm font-black text-slate-900">{job.bookingCode || `Booking ${job._id.slice(-6).toUpperCase()}`}</p><p className="mt-1 text-[11px] text-slate-500">{formatDate(job.updatedAt || job.createdAt)}</p></div><span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-extrabold text-emerald-700">Delivered</span></div><div className="mt-3 space-y-2 rounded-xl bg-slate-50 p-3"><p className="break-words text-xs leading-5"><span className="font-bold text-emerald-700">Pickup:</span> {job.pickup?.address || "Not available"}</p><p className="break-words text-xs leading-5"><span className="font-bold text-orange-700">Drop:</span> {job.drop?.address || "Not available"}</p></div><div className="mt-3 flex items-end justify-between gap-3"><div className="min-w-0"><p className="break-words text-xs font-bold text-slate-800">{job.package?.description || "Package"} · {job.package?.weightKg ?? "—"} kg</p><p className="mt-1 text-[11px] text-slate-500">{vehicleName(job.vehicle)} · {typeof job.route?.distanceKm === "number" ? `${job.route.distanceKm.toFixed(1)} km` : "Distance unavailable"}</p></div><div className="shrink-0 text-right"><p className="text-base font-black text-slate-900">{formatMoney(job.fare?.finalFare ?? job.fare?.estimatedFare)}</p><button type="button" onClick={() => void openHistory(job)} disabled={historyLoading} className="mt-2 inline-flex min-h-9 items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-extrabold text-orange-800 transition hover:bg-orange-100 disabled:cursor-wait disabled:opacity-60"><Eye className="h-4 w-4" />{historyLoading && historyTargetId === job._id ? "Loading…" : "View history"}</button>{job.paymentMethod === "cash_on_delivery" && job.paymentStatus !== "paid" ? <button type="button" onClick={() => void markCodAsCollected(job)} disabled={cashCollectingId === job._id} className="mt-2 flex min-h-9 w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-extrabold text-white disabled:opacity-60"><Banknote className="h-4 w-4" />{cashCollectingId === job._id ? "Recording…" : "Mark collected"}</button> : <p className="mt-2 text-[11px] font-bold text-emerald-700">{job.paymentMethod === "online" ? "Paid online" : job.payment?.cashCollectionVerifiedAt ? "Admin verified" : job.payment?.cashCollectedAt ? "Collected · awaiting admin verification" : "Legacy paid record · contact admin"}</p>}</div></div></article>)}</div>
           </section>
         )}
 
@@ -376,7 +414,7 @@ export default function DriverCompleted() {
                     <div className="grid gap-3 sm:grid-cols-3">
                       <div className="rounded-xl border border-slate-200 p-3"><p className="text-[10px] font-bold uppercase text-slate-500">Final fare</p><p className="mt-1 text-lg font-black">{formatMoney(historyBooking.fare?.finalFare ?? historyBooking.fare?.estimatedFare)}</p></div>
                       <div className="rounded-xl border border-slate-200 p-3"><p className="text-[10px] font-bold uppercase text-slate-500">Payment method</p><p className="mt-1 text-sm font-extrabold">{historyBooking.paymentMethod === "online" ? "Online payment" : "Cash on delivery"}</p></div>
-                      <div className="rounded-xl border border-slate-200 p-3"><p className="text-[10px] font-bold uppercase text-slate-500">Payment status</p><p className="mt-1 text-sm font-extrabold capitalize">{historyBooking.paymentStatus || "—"}</p></div>
+                      <div className="rounded-xl border border-slate-200 p-3"><p className="text-[10px] font-bold uppercase text-slate-500">Payment status</p><p className="mt-1 text-sm font-extrabold capitalize">{historyBooking.paymentStatus || "—"}</p>{historyBooking.paymentMethod === "cash_on_delivery" && historyBooking.payment?.cashCollectedAt && <p className="mt-1 text-[11px] leading-5 text-emerald-700">Cash reported collected {formatDate(historyBooking.payment.cashCollectedAt)}{historyBooking.payment.cashCollectionVerifiedAt ? " · Admin verified" : " · Awaiting admin verification"}</p>}</div>
                     </div>
                     {historyBooking.package?.specialInstructions && <div className="rounded-xl border border-slate-200 p-4"><p className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Special instructions</p><p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">{historyBooking.package.specialInstructions}</p></div>}
                     <div>

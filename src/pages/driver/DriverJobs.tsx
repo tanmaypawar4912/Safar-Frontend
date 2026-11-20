@@ -428,9 +428,9 @@ export default function DriverJobs() {
             </div>
 
             <p className="text-xs leading-5 text-slate-500">
-              Only one eligible driver receives a booking offer at a time. If that
-              driver declines or the offer expires, Safar checks the next eligible
-              driver. Offers expire, so respond promptly.
+Every eligible online driver with an approved matching vehicle receives the offer together.
+              The first eligible driver to accept gets the booking; all other offers close automatically.
+              Offers expire, so respond promptly.
             </p>
 
             {filteredOffers.map((job) => (
@@ -543,7 +543,7 @@ export default function DriverJobs() {
             </h2>
             <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-500">
               {currentJobs.length === 0 && offers.length === 0
-                ? "New offers and active deliveries will appear here. Completed deliveries are kept separately in Completed Deliveries. This page checks for offers every 15 seconds."
+                ? "New offers and active deliveries will appear here. Completed deliveries are kept separately in Completed Deliveries. This page checks for offers every 8 seconds and refreshes immediately when real-time updates are connected."
                 : "Try another filter or clear the search field."}
             </p>
             {(search || filter !== "all") && (

@@ -714,6 +714,11 @@ export default function AdminBookings() {
                     booking.fare?.finalFare ??
                     booking.fare?.estimatedFare;
                   const driverAssigned = Boolean(booking.driver);
+                  const activeOfferCount = (booking.dispatch?.offers || []).filter(
+                    (offer) =>
+                      offer.status === "offered" &&
+                      (!offer.expiresAt || new Date(offer.expiresAt).getTime() > Date.now())
+                  ).length;
 
                   return (
                     <Fragment key={booking._id}>
@@ -809,6 +814,12 @@ export default function AdminBookings() {
                           >
                             {statusLabel(booking.status)}
                           </span>
+                          {booking.status === "pending" && (
+                            <p className="mt-1.5 max-w-[110px] text-[9px] leading-3 text-slate-500">
+                              Dispatch: {statusLabel(booking.dispatch?.status || "searching")}
+                              {booking.dispatch?.status === "offering" ? ` · ${activeOfferCount} active offer(s)` : ""}
+                            </p>
+                          )}
                         </td>
 
                         {/* DRIVER / ASSIGNMENT */}
@@ -869,6 +880,10 @@ export default function AdminBookings() {
                                   </option>
                                 ))}
                               </select>
+
+                              <p className="text-[9px] leading-3 text-slate-500">
+                                {eligibleDrivers.length} of {availableDrivers.length} online driver(s) match this vehicle and {Number(booking.package?.weightKg || 0).toLocaleString("en-IN")} kg load.
+                              </p>
 
                               <button
                                 type="button"

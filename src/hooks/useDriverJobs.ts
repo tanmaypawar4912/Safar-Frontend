@@ -4,6 +4,7 @@ import { isAxiosError } from "axios";
 
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import { subscribeToDriverDispatch } from "../services/trackingSocket";
 
 export type BookingStatus =
   | "pending"
@@ -191,6 +192,7 @@ export function useDriverJobs() {
 
   const requestSequenceRef = useRef(0);
   const activeRequestRef = useRef<ActiveRequest | null>(null);
+  const refreshPendingRef = useRef(false);
 
   const loadJobs = useCallback(
     async (silent = false) => {
@@ -212,6 +214,10 @@ export function useDriverJobs() {
       if (
         activeRequestRef.current?.driverId === requestedDriverId
       ) {
+        // Coalesce socket/poll refresh signals and run one fresh request as soon
+        // as the current request settles; do not lose an offer event to an
+        // already-running request.
+        refreshPendingRef.current = true;
         return;
       }
 
@@ -311,9 +317,15 @@ export function useDriverJobs() {
         );
       } finally {
         if (sequence === requestSequenceRef.current) {
+          const refreshAgain = refreshPendingRef.current;
+          refreshPendingRef.current = false;
           activeRequestRef.current = null;
           setLoading(false);
           setRefreshing(false);
+
+          if (refreshAgain) {
+            window.setTimeout(() => void loadJobs(true), 0);
+          }
         }
       }
     },
@@ -323,6 +335,7 @@ export function useDriverJobs() {
   useEffect(() => {
     // Cancel requests belonging to a previous account.
     requestSequenceRef.current += 1;
+    refreshPendingRef.current = false;
 
     activeRequestRef.current?.controller.abort();
     activeRequestRef.current = null;
@@ -348,7 +361,17 @@ export function useDriverJobs() {
 
     void loadJobs(false);
 
-    // Refresh assigned jobs and pending offers.
+    // Real-time events prompt an immediate REST refresh. The REST endpoint is
+    // still the source of truth and the interval covers disconnected sockets.
+    const unsubscribeDispatch = subscribeToDriverDispatch({
+      onOffer: () => void loadJobs(true),
+      onOfferClosed: () => void loadJobs(true),
+      onJobUpdated: () => void loadJobs(true),
+      onConnected: () => void loadJobs(true),
+    });
+
+    // Keep polling as a recovery path for sleeping tabs, missed events and
+    // temporary Socket.IO/network failures.
     const refreshTimer = window.setInterval(() => {
       if (document.visibilityState === "visible") {
         void loadJobs(true);
@@ -368,6 +391,8 @@ export function useDriverJobs() {
 
     return () => {
       window.clearInterval(refreshTimer);
+      unsubscribeDispatch();
+      refreshPendingRef.current = false;
 
       document.removeEventListener(
         "visibilitychange",

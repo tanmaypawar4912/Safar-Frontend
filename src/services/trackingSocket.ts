@@ -9,7 +9,13 @@ export type LiveTrackingPoint = {
   capturedAt: string;
 };
 
-type TrackingSocketEvent = { bookingId?: string; location?: LiveTrackingPoint; reason?: string };
+type TrackingSocketEvent = {
+  bookingId?: string;
+  bookingCode?: string;
+  location?: LiveTrackingPoint;
+  reason?: string;
+  expiresAt?: string;
+};
 
 type TrackingSocketAck = {
   success: boolean;
@@ -158,6 +164,88 @@ export function subscribeToBookingTracking(
     socket.connect();
   }).catch(() => {
     // The REST polling path remains operational when Socket.IO is unavailable.
+  });
+
+  return cleanup;
+}
+
+
+export type DriverDispatchSocketHandlers = {
+  onOffer?: (event: { bookingId?: string; bookingCode?: string; expiresAt?: string }) => void;
+  onOfferClosed?: (event: { bookingId?: string; bookingCode?: string; reason?: string }) => void;
+  onJobUpdated?: (event: { bookingId?: string; bookingCode?: string; reason?: string }) => void;
+  onConnected?: () => void;
+};
+
+/**
+ * Listen for job-offer changes on the authenticated driver's private room.
+ * REST polling in useDriverJobs remains the durable fallback and source of
+ * truth, so missed socket events do not cause missed offers.
+ */
+export function subscribeToDriverDispatch(
+  handlers: DriverDispatchSocketHandlers
+): () => void {
+  let cancelled = false;
+  let socket: SocketLike | null = null;
+
+  const cleanup = () => {
+    cancelled = true;
+    if (!socket) return;
+    socket.off("connect", onConnect);
+    socket.off("dispatch:offer", onOffer);
+    socket.off("dispatch:offer-closed", onOfferClosed);
+    socket.off("dispatch:job-updated", onJobUpdated);
+    socket.disconnect();
+    socket = null;
+  };
+
+  const onConnect = () => {
+    handlers.onConnected?.();
+  };
+
+  const onOffer = (payload?: TrackingSocketEvent) => {
+    handlers.onOffer?.({
+      bookingId: payload?.bookingId,
+      bookingCode: payload?.bookingCode,
+      expiresAt: payload?.expiresAt,
+    });
+  };
+
+  const onOfferClosed = (payload?: TrackingSocketEvent) => {
+    handlers.onOfferClosed?.({
+      bookingId: payload?.bookingId,
+      bookingCode: payload?.bookingCode,
+      reason: payload?.reason,
+    });
+  };
+
+  const onJobUpdated = (payload?: TrackingSocketEvent) => {
+    handlers.onJobUpdated?.({
+      bookingId: payload?.bookingId,
+      bookingCode: payload?.bookingCode,
+      reason: payload?.reason,
+    });
+  };
+
+  void ensureSocketClient().then((ready) => {
+    if (cancelled || !ready || !window.io) return;
+
+    socket = window.io(socketOrigin(), {
+      withCredentials: true,
+      reconnection: true,
+      reconnectionAttempts: Number.POSITIVE_INFINITY,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 10000,
+    });
+
+    socket.on("connect", onConnect);
+    socket.on("dispatch:offer", onOffer);
+    socket.on("dispatch:offer-closed", onOfferClosed);
+    socket.on("dispatch:job-updated", onJobUpdated);
+    socket.connect();
+  }).catch(() => {
+    // The 8-second authenticated REST refresh remains the fallback.
   });
 
   return cleanup;
